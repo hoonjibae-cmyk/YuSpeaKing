@@ -39,6 +39,9 @@ npm run dev
 2. 위 환경변수를 Vercel 프로젝트에 등록
 3. Push 시 자동 배포
 
+> 📘 **단계별 상세 배포 가이드**(Supabase 세팅 · AI 키 발급 · Vercel 연결 · 첫 사용 ·
+> 문제 해결)는 **[`docs/DEPLOY.md`](docs/DEPLOY.md)** 참고.
+
 ## 구조
 
 ```

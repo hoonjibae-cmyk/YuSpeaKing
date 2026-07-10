@@ -1,7 +1,18 @@
 import "server-only";
 import { createAdminClient } from "../supabase/admin";
 import { assessPronunciation } from "./pronunciation";
+import { assessPronunciationOpenAI } from "./pronunciation-openai";
+import type { AzureScores } from "../types";
 import { generateFeedback } from "./feedback";
+
+// 평가 엔진 선택: Azure 키가 있으면 정밀 발음평가, 없으면 OpenAI(Whisper) 대체.
+function assessSpeech(wav: Buffer, referenceText: string): Promise<AzureScores> {
+  const hasAzure =
+    !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION;
+  return hasAzure
+    ? assessPronunciation(wav, referenceText)
+    : assessPronunciationOpenAI(wav, referenceText);
+}
 
 // 제출된 녹음 1건을 평가: Azure 발음평가 → Claude 2단 피드백 → DB 업데이트.
 // 실패해도 예외를 던지지 않고 submission.status='error' 로 기록한다.
@@ -35,8 +46,8 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
     if (dlErr || !file) throw new Error(dlErr?.message || "오디오 다운로드 실패");
     const wav = Buffer.from(await file.arrayBuffer());
 
-    // 2) Azure 발음평가
-    const scores = await assessPronunciation(wav, assignment.passage_text);
+    // 2) 발음평가 (Azure 우선, 없으면 OpenAI Whisper 대체)
+    const scores = await assessSpeech(wav, assignment.passage_text);
 
     // 3) Claude 2단 피드백
     const feedback = await generateFeedback(scores, assignment.passage_text);

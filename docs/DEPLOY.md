@@ -62,7 +62,11 @@ Supabase·Vercel은 무료로 시작 가능합니다.
 2. **API keys** → **Create new secret key** → 값 복사
 3. (선택) 음성 톤을 바꾸려면 `OPENAI_TTS_VOICE` 값으로 `nova`/`alloy`/`shimmer` 등 지정 가능
 
-### 2-2. Azure Speech (발음 평가) — `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`
+### 2-2. Azure Speech (발음 평가) — `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` — **선택**
+> ⚠️ **선택 사항입니다.** Azure 키를 비워두면 앱이 자동으로 **OpenAI(Whisper) + Claude**
+> 대체 평가를 사용합니다(음소 단위 정밀도는 낮지만 즉시 동작). 나중에 Azure 키만 추가하면
+> 정밀 발음평가로 자동 업그레이드됩니다. **Azure 로그인이 안 되면 이 단계는 건너뛰세요.**
+
 1. https://portal.azure.com 로그인 (Azure 계정 필요, 무료 크레딧 있음)
 2. 상단 검색창에 **Speech services** → **Create**
 3. 입력:
@@ -100,8 +104,8 @@ Vercel에 넣을 최종 목록입니다. `.env.example` 과 동일합니다.
 | `STUDENT_SESSION_SECRET` | 직접 생성 | **서버 전용** |
 | `OPENAI_API_KEY` | OpenAI | **서버 전용** |
 | `OPENAI_TTS_VOICE` (선택) | 직접 지정 | 서버 |
-| `AZURE_SPEECH_KEY` | Azure | **서버 전용** |
-| `AZURE_SPEECH_REGION` | Azure | 서버 |
+| `AZURE_SPEECH_KEY` (선택) | Azure | **서버 전용** · 비우면 Whisper 대체 |
+| `AZURE_SPEECH_REGION` (선택) | Azure | 서버 · 비우면 Whisper 대체 |
 | `ANTHROPIC_API_KEY` | Anthropic | **서버 전용** |
 | `ANTHROPIC_MODEL` (선택) | 직접 지정 | 서버 |
 

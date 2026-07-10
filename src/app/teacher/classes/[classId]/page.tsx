@@ -54,7 +54,15 @@ export default async function ClassDetailPage({
       </Link>
 
       <header className="mt-3 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{klass.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">{klass.name}</h1>
+          <Link
+            href={`/teacher/classes/${classId}/monthly`}
+            className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+          >
+            📄 월말 리포트
+          </Link>
+        </div>
         <div className="text-right">
           <div className="text-xs text-slate-400">반 코드 (학생 로그인용)</div>
           <div className="font-mono text-xl font-bold tracking-wider text-brand">

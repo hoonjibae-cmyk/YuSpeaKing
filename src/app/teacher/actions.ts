@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
 import { synthesizeSpeech } from "@/lib/ai/tts";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
+import { gatherMonthly } from "@/lib/monthly";
+import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 
 // 정상 속도 + 느린(0.75배) 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
 async function generateAndStoreSamples(assignmentId: string, passageText: string) {
@@ -247,6 +249,71 @@ export async function deleteAssignment(formData: FormData) {
   // submissions 는 ON DELETE CASCADE
   await db.from("assignments").delete().eq("id", assignmentId);
   revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// ---------- 월말 리포트 ----------
+
+// 학생이 실효 교사 소유인지 확인 후 {id,name,class_id} 반환
+async function ownedStudent(
+  db: Awaited<ReturnType<typeof getTeacherContext>>["db"],
+  effectiveId: string,
+  studentId: string
+) {
+  const { data } = await db
+    .from("students")
+    .select("id, name, class_id, classes!inner(teacher_id)")
+    .eq("id", studentId)
+    .eq("classes.teacher_id", effectiveId)
+    .single();
+  return data as { id: string; name: string; class_id: string } | null;
+}
+
+// AI 월말 리포트 초안 생성
+export async function generateMonthlyDraft(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const studentId = String(formData.get("studentId") || "");
+  const month = String(formData.get("month") || "");
+  const student = await ownedStudent(db, effectiveId, studentId);
+  if (!student || !month) redirect("/teacher");
+
+  const data = await gatherMonthly(db, student.id, student.class_id, month);
+  let content: string;
+  try {
+    content = await generateMonthlyReportDraft(student.name, month, data);
+  } catch (e) {
+    console.error("[월말리포트] 생성 실패:", e);
+    redirect(
+      `/teacher/students/${studentId}/monthly?month=${month}&error=${encodeURIComponent(
+        "초안 생성 실패 (Anthropic 키 확인)"
+      )}`
+    );
+  }
+
+  await db
+    .from("monthly_reports")
+    .upsert(
+      { student_id: studentId, year_month: month, content },
+      { onConflict: "student_id,year_month" }
+    );
+  revalidatePath(`/teacher/students/${studentId}/monthly`);
+}
+
+// 월말 리포트 저장(수정)
+export async function saveMonthlyReport(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const studentId = String(formData.get("studentId") || "");
+  const month = String(formData.get("month") || "");
+  const content = String(formData.get("content") || "");
+  const student = await ownedStudent(db, effectiveId, studentId);
+  if (!student || !month) redirect("/teacher");
+
+  await db
+    .from("monthly_reports")
+    .upsert(
+      { student_id: studentId, year_month: month, content },
+      { onConflict: "student_id,year_month" }
+    );
+  revalidatePath(`/teacher/students/${studentId}/monthly`);
 }
 
 // 샘플 음성 재생성 (TTS 실패했거나 지문 수정 후)

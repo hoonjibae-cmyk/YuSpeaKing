@@ -176,6 +176,38 @@ create policy submissions_owner on public.submissions
   );
 
 -- ============================================================
+--  monthly_reports : 학생 월말 리포트 (교사 작성/AI 초안)
+-- ============================================================
+create table if not exists public.monthly_reports (
+  id         uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  year_month text not null,
+  content    text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (student_id, year_month)
+);
+create index if not exists monthly_reports_student_idx
+  on public.monthly_reports (student_id);
+drop trigger if exists monthly_reports_touch on public.monthly_reports;
+create trigger monthly_reports_touch
+  before update on public.monthly_reports
+  for each row execute function public.touch_updated_at();
+
+alter table public.monthly_reports enable row level security;
+drop policy if exists monthly_reports_owner on public.monthly_reports;
+create policy monthly_reports_owner on public.monthly_reports
+  for all using (
+    exists (select 1 from public.students s
+            join public.classes c on c.id = s.class_id
+            where s.id = monthly_reports.student_id and c.teacher_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.students s
+            join public.classes c on c.id = s.class_id
+            where s.id = monthly_reports.student_id and c.teacher_id = auth.uid())
+  );
+
+-- ============================================================
 --  Storage 버킷
 --   sample-audio : 샘플 음성 (공개 읽기)
 --   submissions  : 학생 녹음 (비공개, 서명 URL로만 접근)

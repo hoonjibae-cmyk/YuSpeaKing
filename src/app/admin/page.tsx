@@ -39,9 +39,8 @@ export default async function AdminDashboard() {
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // 교사별 집계
+  // 교사별 집계 (운영자 겸 교사도 포함)
   const rows = teachers
-    .filter((t) => t.role !== "admin")
     .map((t) => {
       const myClasses = classes.filter((c) => c.teacher_id === t.id).map((c) => c.id);
       const studentCount = myClasses.reduce(
@@ -80,6 +79,7 @@ export default async function AdminDashboard() {
         id: t.id,
         name: t.name || t.email,
         email: t.email,
+        isAdmin: t.role === "admin",
         classCount: myClasses.length,
         studentCount,
         assignmentCount: myAssignments.length,
@@ -131,7 +131,14 @@ export default async function AdminDashboard() {
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <div className="font-medium">{r.name}</div>
+                  <div className="font-medium">
+                    {r.name}
+                    {r.isAdmin && (
+                      <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand">
+                        운영자
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-400">{r.email}</div>
                 </td>
                 <td className="px-3 py-3 text-slate-600">

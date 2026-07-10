@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   addStudent,
   deleteStudent,
+  resetStudentPin,
   createAssignment,
   regenerateSample,
   deleteAssignment,
@@ -108,13 +109,22 @@ export default async function ClassDetailPage({
                   <span className="inline-block w-8 text-slate-400">{s.number}</span>
                   {s.name}
                 </span>
-                <form action={deleteStudent}>
-                  <input type="hidden" name="classId" value={classId} />
-                  <input type="hidden" name="studentId" value={s.id} />
-                  <button className="text-xs text-slate-400 hover:text-red-500">
-                    삭제
-                  </button>
-                </form>
+                <span className="flex items-center gap-3">
+                  <form action={resetStudentPin}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <button className="text-xs text-slate-400 hover:text-brand">
+                      PIN 초기화
+                    </button>
+                  </form>
+                  <form action={deleteStudent}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <button className="text-xs text-slate-400 hover:text-red-500">
+                      삭제
+                    </button>
+                  </form>
+                </span>
               </li>
             ))}
           </ul>

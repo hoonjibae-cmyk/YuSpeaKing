@@ -1,10 +1,13 @@
 import "server-only";
+import { createHmac } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { StudentSession } from "./types";
 
 const COOKIE_NAME = "yus_student";
+const PENDING_COOKIE = "yus_pending";
 const MAX_AGE = 60 * 60 * 12; // 12시간
+const PENDING_MAX_AGE = 60 * 10; // 10분 (PIN 입력 단계용)
 
 function secret() {
   const s = process.env.STUDENT_SESSION_SECRET;
@@ -48,4 +51,54 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 
 export function clearStudentSession() {
   cookies().delete(COOKIE_NAME);
+}
+
+// ---------- PIN 해시 ----------
+
+// 4자리 PIN 을 학생ID 를 salt 로 한 HMAC 으로 해시 (평문 저장 방지)
+export function hashPin(studentId: string, pin: string): string {
+  const s = process.env.STUDENT_SESSION_SECRET || "";
+  return createHmac("sha256", s).update(`${studentId}:${pin}`).digest("hex");
+}
+
+// ---------- PIN 입력 단계용 임시(pending) 세션 ----------
+
+export interface PendingStudent extends StudentSession {
+  pinSet: boolean; // 이미 PIN 이 설정된 학생인지
+}
+
+export async function setPendingStudent(p: PendingStudent) {
+  const token = await new SignJWT({ ...p })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${PENDING_MAX_AGE}s`)
+    .sign(secret());
+  cookies().set(PENDING_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: PENDING_MAX_AGE,
+  });
+}
+
+export async function getPendingStudent(): Promise<PendingStudent | null> {
+  const token = cookies().get(PENDING_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret());
+    return {
+      studentId: String(payload.studentId),
+      classId: String(payload.classId),
+      name: String(payload.name),
+      number: Number(payload.number),
+      pinSet: Boolean(payload.pinSet),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingStudent() {
+  cookies().delete(PENDING_COOKIE);
 }

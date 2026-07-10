@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getStudentSession } from "@/lib/student-session";
-import { enterClass } from "./actions";
+import { studentLogin } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export default async function StudentEntryPage({
   searchParams,
@@ -17,9 +18,9 @@ export default async function StudentEntryPage({
       </Link>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-center text-lg font-semibold">반 코드 입력</h1>
+        <h1 className="text-center text-lg font-semibold">학생 로그인</h1>
         <p className="mt-1 text-center text-sm text-slate-500">
-          선생님이 알려준 코드를 넣어줘요
+          반 코드와 본인 이름·번호를 입력해요
         </p>
 
         {searchParams.error && (
@@ -28,20 +29,42 @@ export default async function StudentEntryPage({
           </p>
         )}
 
-        <form action={enterClass} className="mt-6 space-y-4">
+        <form action={studentLogin} className="mt-6 space-y-3">
           <input
             name="code"
-            placeholder="ABC123"
+            placeholder="반 코드 (예: ABC234)"
             required
             autoCapitalize="characters"
             autoComplete="off"
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-center text-2xl font-bold uppercase tracking-widest focus:border-brand focus:outline-none"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-center text-lg font-bold uppercase tracking-widest focus:border-brand focus:outline-none"
           />
-          <button className="w-full rounded-xl bg-brand py-3 text-lg font-semibold text-white transition hover:bg-brand-dark">
+          <div className="flex gap-2">
+            <input
+              name="number"
+              type="number"
+              placeholder="번호"
+              required
+              className="w-24 rounded-xl border border-slate-300 px-3 py-3 text-center focus:border-brand focus:outline-none"
+            />
+            <input
+              name="name"
+              placeholder="이름"
+              required
+              className="flex-1 rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none"
+            />
+          </div>
+          <SubmitButton
+            pendingText="확인 중…"
+            className="w-full rounded-xl bg-brand py-3 text-lg font-semibold text-white transition hover:bg-brand-dark"
+          >
             입장하기
-          </button>
+          </SubmitButton>
         </form>
       </div>
+
+      <p className="mt-4 text-center text-xs text-slate-400">
+        처음이면 입장 후 나만의 PIN을 정할 수 있어요 🔒
+      </p>
     </main>
   );
 }

@@ -134,6 +134,16 @@ export async function deleteStudent(formData: FormData) {
   revalidatePath(`/teacher/classes/${classId}`);
 }
 
+// 학생 PIN 초기화 (분실 시 → 다음 로그인에서 새로 설정)
+export async function resetStudentPin(formData: FormData) {
+  await requireTeacher();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const supabase = createClient();
+  await supabase.from("students").update({ pin_hash: null }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // ---------- 과제 (지문 등록 + TTS 샘플음성) ----------
 
 export async function createAssignment(formData: FormData) {

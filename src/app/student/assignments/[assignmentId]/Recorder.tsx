@@ -4,7 +4,14 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { blobToWav16kMono } from "@/lib/wav-client";
 
-type Phase = "idle" | "recording" | "recorded" | "uploading" | "done" | "error";
+type Phase =
+  | "idle"
+  | "recording"
+  | "recorded"
+  | "uploading"
+  | "evaluating"
+  | "done"
+  | "error";
 
 export default function Recorder({
   assignmentId,
@@ -83,6 +90,22 @@ export default function Recorder({
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || "제출에 실패했어요");
+      }
+      const { submissionId } = (await res.json()) as { submissionId?: string };
+
+      // 제출(저장) 성공 → 채점 단계로. 채점이 실패/지연돼도 제출은 이미 유효하므로
+      // 완료 화면을 보여주고, 피드백은 준비되는 대로 표시된다.
+      setPhase("evaluating");
+      try {
+        if (submissionId) {
+          await fetch("/api/student/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ submissionId }),
+          });
+        }
+      } catch {
+        // 채점 지연/실패는 무시 (교사가 재평가 가능)
       }
       setPhase("done");
       router.refresh();
@@ -174,6 +197,17 @@ export default function Recorder({
         >
           제출 중...
         </button>
+      )}
+
+      {phase === "evaluating" && (
+        <div className="rounded-2xl bg-brand-light py-5 text-center">
+          <div className="text-lg font-semibold text-brand">
+            🎧 AI가 발음을 채점하고 있어요…
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            10~20초 정도 걸려요. 잠깐만 기다려 주세요!
+          </p>
+        </div>
       )}
     </div>
   );

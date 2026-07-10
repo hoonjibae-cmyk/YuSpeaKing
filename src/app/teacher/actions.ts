@@ -158,7 +158,7 @@ export async function createAssignment(formData: FormData) {
   const dueDate = String(formData.get("due_date") || "") || null;
   const maxAttempts = Math.min(
     10,
-    Math.max(1, parseInt(String(formData.get("max_attempts") || "3"), 10) || 3)
+    Math.max(1, parseInt(String(formData.get("max_attempts") || "2"), 10) || 2)
   );
 
   if (!classId || !title || !passageText) {

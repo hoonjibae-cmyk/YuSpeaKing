@@ -178,7 +178,7 @@ export default async function ClassDetailPage({
                     type="number"
                     min={1}
                     max={10}
-                    defaultValue={3}
+                    defaultValue={2}
                     className="ml-2 w-16 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
                   />
                 </label>

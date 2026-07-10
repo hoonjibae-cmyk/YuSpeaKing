@@ -73,7 +73,7 @@ create table if not exists public.assignments (
   sample_audio_url text,                 -- OpenAI TTS 생성 후 채워짐 (정상 속도)
   sample_audio_slow_url text,            -- 느린(0.75배) 버전
   due_date         date,
-  max_attempts     int not null default 3, -- 학생 재제출 허용 횟수
+  max_attempts     int not null default 2, -- 학생 재제출 허용 횟수
   created_at       timestamptz not null default now()
 );
 create index if not exists assignments_class_idx on public.assignments (class_id);

@@ -29,11 +29,19 @@ export default async function StudentHome() {
             {session.number}번 {session.name}
           </p>
         </div>
-        <form action={studentLogout}>
-          <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
-            나가기
-          </button>
-        </form>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/student/history"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-brand hover:bg-brand-light"
+          >
+            📈 내 기록
+          </Link>
+          <form action={studentLogout} className="inline">
+            <button className="ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
+              나가기
+            </button>
+          </form>
+        </div>
       </header>
 
       <section className="mt-8 space-y-3">

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTeacher } from "@/lib/auth";
 import { synthesizeSpeech } from "@/lib/ai/tts";
+import { evaluateSubmission } from "@/lib/ai/evaluate";
 
 // ---------- 인증 ----------
 
@@ -159,6 +160,44 @@ export async function createAssignment(formData: FormData) {
   }
 
   revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// ---------- 제출물 검토 (M4) ----------
+
+// 교사가 상세 리포트(교사용 피드백)를 수정하고 검토완료 처리
+export async function updateSubmissionReview(formData: FormData) {
+  await requireTeacher();
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const submissionId = String(formData.get("submissionId") || "");
+  const teacherFeedback = String(formData.get("teacher_feedback") || "");
+  const reviewed = formData.get("teacher_reviewed") === "on";
+
+  const supabase = createClient();
+  // RLS 로 본인 반 제출만 수정 가능
+  await supabase
+    .from("submissions")
+    .update({ teacher_feedback: teacherFeedback, teacher_reviewed: reviewed })
+    .eq("id", submissionId);
+
+  revalidatePath(`/teacher/assignments/${assignmentId}`);
+}
+
+// 평가 실패/재시도 시 재평가
+export async function reevaluateSubmission(formData: FormData) {
+  await requireTeacher();
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const submissionId = String(formData.get("submissionId") || "");
+
+  // 소유권 확인 (RLS)
+  const supabase = createClient();
+  const { data: sub } = await supabase
+    .from("submissions")
+    .select("id")
+    .eq("id", submissionId)
+    .single();
+  if (sub) await evaluateSubmission(submissionId);
+
+  revalidatePath(`/teacher/assignments/${assignmentId}`);
 }
 
 // 샘플 음성 재생성 (TTS 실패했거나 지문 수정 후)

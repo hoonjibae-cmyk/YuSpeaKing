@@ -9,6 +9,33 @@ import { requireTeacher } from "@/lib/auth";
 import { synthesizeSpeech } from "@/lib/ai/tts";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 
+// 정상 속도 + 느린(0.75배) 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
+async function generateAndStoreSamples(assignmentId: string, passageText: string) {
+  const admin = createAdminClient();
+  const [normal, slow] = await Promise.all([
+    synthesizeSpeech(passageText, 1.0),
+    synthesizeSpeech(passageText, 0.75),
+  ]);
+  const normalPath = `${assignmentId}.mp3`;
+  const slowPath = `${assignmentId}_slow.mp3`;
+  await Promise.all([
+    admin.storage
+      .from("sample-audio")
+      .upload(normalPath, normal, { contentType: "audio/mpeg", upsert: true }),
+    admin.storage
+      .from("sample-audio")
+      .upload(slowPath, slow, { contentType: "audio/mpeg", upsert: true }),
+  ]);
+  const normalUrl = admin.storage.from("sample-audio").getPublicUrl(normalPath)
+    .data.publicUrl;
+  const slowUrl = admin.storage.from("sample-audio").getPublicUrl(slowPath).data
+    .publicUrl;
+  await admin
+    .from("assignments")
+    .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl })
+    .eq("id", assignmentId);
+}
+
 // ---------- 인증 ----------
 
 export async function signIn(formData: FormData) {
@@ -147,19 +174,7 @@ export async function createAssignment(formData: FormData) {
 
   // 샘플 음성 생성 (best-effort: 실패해도 과제는 생성됨. 나중에 재생성 가능)
   try {
-    const audio = await synthesizeSpeech(passageText);
-    const admin = createAdminClient();
-    const path = `${assignment.id}.mp3`;
-    const { error: upErr } = await admin.storage
-      .from("sample-audio")
-      .upload(path, audio, { contentType: "audio/mpeg", upsert: true });
-    if (!upErr) {
-      const { data: pub } = admin.storage.from("sample-audio").getPublicUrl(path);
-      await supabase
-        .from("assignments")
-        .update({ sample_audio_url: pub.publicUrl })
-        .eq("id", assignment.id);
-    }
+    await generateAndStoreSamples(assignment.id, passageText);
   } catch (e) {
     console.error("[TTS] 샘플음성 생성 실패:", e);
   }
@@ -244,17 +259,7 @@ export async function regenerateSample(formData: FormData) {
   if (!assignment) redirect(`/teacher/classes/${classId}`);
 
   try {
-    const audio = await synthesizeSpeech(assignment.passage_text);
-    const admin = createAdminClient();
-    const path = `${assignment.id}.mp3`;
-    await admin.storage
-      .from("sample-audio")
-      .upload(path, audio, { contentType: "audio/mpeg", upsert: true });
-    const { data: pub } = admin.storage.from("sample-audio").getPublicUrl(path);
-    await supabase
-      .from("assignments")
-      .update({ sample_audio_url: pub.publicUrl })
-      .eq("id", assignment.id);
+    await generateAndStoreSamples(assignment.id, assignment.passage_text);
   } catch (e) {
     console.error("[TTS] 재생성 실패:", e);
     redirect(`/teacher/classes/${classId}?error=샘플음성+생성+실패+(OpenAI+키+확인)`);

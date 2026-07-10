@@ -36,6 +36,7 @@ export interface Assignment {
   title: string;
   passage_text: string;
   sample_audio_url: string | null;
+  sample_audio_slow_url: string | null;
   due_date: string | null;
   max_attempts: number;
   created_at: string;

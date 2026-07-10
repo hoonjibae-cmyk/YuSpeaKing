@@ -68,6 +68,20 @@ export default async function AssignmentDashboard({
   const submittedCount = submissions?.length ?? 0;
   const total = students?.length ?? 0;
 
+  // 통계 집계
+  const scores = (submissions ?? [])
+    .filter((s) => s.status === "evaluated" && s.overall_score != null)
+    .map((s) => Number(s.overall_score));
+  const avgScore = scores.length
+    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    : null;
+  const maxScore = scores.length ? Math.round(Math.max(...scores)) : null;
+  const minScore = scores.length ? Math.round(Math.min(...scores)) : null;
+  const submissionRate = total ? Math.round((submittedCount / total) * 100) : 0;
+  const nonSubmitters = (students ?? []).filter(
+    (s) => !subByStudent.has(s.id)
+  );
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <Link
@@ -77,9 +91,20 @@ export default async function AssignmentDashboard({
         ← 반으로
       </Link>
       <h1 className="mt-3 text-2xl font-bold">{assignment.title}</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        제출 {submittedCount} / {total}명
-      </p>
+
+      {/* 통계 요약 */}
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatCard label="제출률" value={`${submissionRate}%`} sub={`${submittedCount}/${total}명`} />
+        <StatCard label="평균 점수" value={avgScore != null ? `${avgScore}점` : "-"} />
+        <StatCard label="최고" value={maxScore != null ? `${maxScore}점` : "-"} />
+        <StatCard label="최저" value={minScore != null ? `${minScore}점` : "-"} />
+      </div>
+      {nonSubmitters.length > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          미제출 {nonSubmitters.length}명:{" "}
+          {nonSubmitters.map((s) => `${s.number} ${s.name}`).join(", ")}
+        </p>
+      )}
 
       <div className="mt-6 space-y-3">
         {students?.map((student) => {
@@ -258,6 +283,24 @@ export default async function AssignmentDashboard({
         })}
       </div>
     </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="mt-0.5 text-xl font-bold text-brand">{value}</div>
+      {sub && <div className="text-xs text-slate-400">{sub}</div>}
+    </div>
   );
 }
 

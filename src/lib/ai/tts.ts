@@ -1,7 +1,11 @@
 import "server-only";
 
 // OpenAI TTS-HD 로 지문을 원어민 발음 음성(mp3)으로 합성
-export async function synthesizeSpeech(text: string): Promise<Buffer> {
+// speed: 0.25~4.0 (1.0=정상, 0.75=천천히)
+export async function synthesizeSpeech(
+  text: string,
+  speed = 1.0
+): Promise<Buffer> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY 가 설정되지 않았습니다.");
 
@@ -18,6 +22,7 @@ export async function synthesizeSpeech(text: string): Promise<Buffer> {
       voice,
       input: text,
       response_format: "mp3",
+      speed,
     }),
   });
 

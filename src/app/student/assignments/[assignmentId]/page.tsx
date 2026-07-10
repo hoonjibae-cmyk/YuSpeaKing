@@ -14,7 +14,9 @@ export default async function StudentAssignmentPage({
 
   const { data: assignment } = await admin
     .from("assignments")
-    .select("id, class_id, title, passage_text, sample_audio_url, max_attempts")
+    .select(
+      "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts"
+    )
     .eq("id", params.assignmentId)
     .single();
 
@@ -42,17 +44,36 @@ export default async function StudentAssignmentPage({
       </Link>
       <h1 className="mt-3 text-xl font-bold">{assignment.title}</h1>
 
-      {/* 1. 원어민 샘플 듣기 */}
+      {/* 1. 원어민 샘플 듣기 (천천히 / 원어민 속도) */}
       <section className="mt-6">
         <h2 className="text-sm font-semibold text-slate-500">
           1. 원어민 발음 듣기 🎧
         </h2>
         {assignment.sample_audio_url ? (
-          <audio
-            src={assignment.sample_audio_url}
-            controls
-            className="mt-2 w-full"
-          />
+          <div className="mt-2 space-y-3">
+            {assignment.sample_audio_slow_url && (
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="mb-1 text-xs font-medium text-brand">
+                  🐢 천천히 듣기 (처음엔 이걸로 연습해요)
+                </div>
+                <audio
+                  src={assignment.sample_audio_slow_url}
+                  controls
+                  className="w-full"
+                />
+              </div>
+            )}
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="mb-1 text-xs font-medium text-slate-500">
+                🎧 원어민 속도 (익숙해지면 이걸로!)
+              </div>
+              <audio
+                src={assignment.sample_audio_url}
+                controls
+                className="w-full"
+              />
+            </div>
+          </div>
         ) : (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
             샘플 음성을 준비 중이에요.

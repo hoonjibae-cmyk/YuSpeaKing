@@ -69,7 +69,8 @@ create table if not exists public.assignments (
   class_id         uuid not null references public.classes (id) on delete cascade,
   title            text not null,
   passage_text     text not null,
-  sample_audio_url text,                 -- OpenAI TTS 생성 후 채워짐
+  sample_audio_url text,                 -- OpenAI TTS 생성 후 채워짐 (정상 속도)
+  sample_audio_slow_url text,            -- 느린(0.75배) 버전
   due_date         date,
   max_attempts     int not null default 3, -- 학생 재제출 허용 횟수
   created_at       timestamptz not null default now()

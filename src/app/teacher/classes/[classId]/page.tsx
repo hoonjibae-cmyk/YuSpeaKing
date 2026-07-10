@@ -37,7 +37,9 @@ export default async function ClassDetailPage({
       .order("number"),
     supabase
       .from("assignments")
-      .select("id, title, sample_audio_url, due_date, created_at, submissions(count)")
+      .select(
+        "id, title, sample_audio_url, due_date, created_at, submissions(overall_score, status)"
+      )
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
   ]);
@@ -177,8 +179,19 @@ export default async function ClassDetailPage({
               </li>
             )}
             {assignments?.map((a) => {
-              const subCount =
-                (a.submissions as { count: number }[])?.[0]?.count ?? 0;
+              const subs =
+                (a.submissions as { overall_score: number | null; status: string }[]) ??
+                [];
+              const subCount = subs.length;
+              const evaluated = subs.filter(
+                (s) => s.status === "evaluated" && s.overall_score != null
+              );
+              const avg = evaluated.length
+                ? Math.round(
+                    evaluated.reduce((t, s) => t + Number(s.overall_score), 0) /
+                      evaluated.length
+                  )
+                : null;
               return (
                 <li
                   key={a.id}
@@ -191,7 +204,10 @@ export default async function ClassDetailPage({
                     >
                       {a.title}
                     </Link>
-                    <span className="text-xs text-slate-400">제출 {subCount}</span>
+                    <span className="text-xs text-slate-400">
+                      제출 {subCount}
+                      {avg != null && ` · 평균 ${avg}점`}
+                    </span>
                   </div>
                   <div className="mt-2 flex items-center gap-3 text-xs">
                     {a.sample_audio_url ? (

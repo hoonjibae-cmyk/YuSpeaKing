@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 
 function HeroArt() {
   return (
@@ -67,6 +68,8 @@ function HeroArt() {
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-8 px-6 py-16 text-center">
+      <Logo size="lg" />
+
       <HeroArt />
 
       <div className="space-y-3">

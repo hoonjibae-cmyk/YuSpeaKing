@@ -3,6 +3,7 @@ import { requireTeacher, getRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createClass, signOut } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import { CrownMark } from "@/components/Logo";
 
 export default async function TeacherDashboard({
   searchParams,
@@ -21,9 +22,12 @@ export default async function TeacherDashboard({
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand">유스피킹 · 선생님</h1>
-          <p className="text-sm text-slate-500">{teacher.email}</p>
+        <div className="flex items-center gap-3">
+          <CrownMark className="h-9 w-9" />
+          <div>
+            <h1 className="text-2xl font-bold text-brand">유스피킹 · 선생님</h1>
+            <p className="text-sm text-slate-500">{teacher.email}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {role === "admin" && (

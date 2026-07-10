@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getStudentSession } from "@/lib/student-session";
 import { studentLogin } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import { Logo } from "@/components/Logo";
 
 export default async function StudentEntryPage({
   searchParams,
@@ -13,8 +14,9 @@ export default async function StudentEntryPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-8 text-center text-3xl font-bold text-brand">
-        유스피킹
+      <Link href="/" className="mb-8 flex flex-col items-center gap-2">
+        <Logo size="md" />
+        <span className="text-2xl font-bold text-brand">유스피킹</span>
       </Link>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">

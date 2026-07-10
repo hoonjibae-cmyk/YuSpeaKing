@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTeacher } from "@/lib/auth";
+import { Logo } from "@/components/Logo";
 import { signIn, signUp } from "../actions";
 
 export default async function TeacherLoginPage({
@@ -15,8 +16,9 @@ export default async function TeacherLoginPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-8 text-center text-2xl font-bold text-brand">
-        유스피킹
+      <Link href="/" className="mb-8 flex flex-col items-center gap-2">
+        <Logo size="md" />
+        <span className="text-xl font-bold text-brand">유스피킹</span>
       </Link>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">

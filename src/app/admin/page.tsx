@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
+import { CrownMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -94,11 +95,14 @@ export default async function AdminDashboard() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand">유스피킹 · 운영자</h1>
-          <p className="text-sm text-slate-500">
-            선생님별 과제 업로드·제출률·평균점수 현황
-          </p>
+        <div className="flex items-center gap-3">
+          <CrownMark className="h-9 w-9" />
+          <div>
+            <h1 className="text-2xl font-bold text-brand">유스피킹 · 운영자</h1>
+            <p className="text-sm text-slate-500">
+              선생님별 과제 업로드·제출률·평균점수 현황
+            </p>
+          </div>
         </div>
         <form action={signOut}>
           <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">

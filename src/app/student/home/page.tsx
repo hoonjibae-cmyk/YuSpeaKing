@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { studentLogout } from "../actions";
+import { CrownMark } from "@/components/Logo";
 
 export default async function StudentHome() {
   const session = await requireStudent();
@@ -23,11 +24,14 @@ export default async function StudentHome() {
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-brand">오늘의 스피킹</h1>
-          <p className="text-sm text-slate-500">
-            {session.number}번 {session.name}
-          </p>
+        <div className="flex items-center gap-2">
+          <CrownMark className="h-8 w-8" />
+          <div>
+            <h1 className="text-xl font-bold text-brand">오늘의 스피킹</h1>
+            <p className="text-sm text-slate-500">
+              {session.number}번 {session.name}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Link

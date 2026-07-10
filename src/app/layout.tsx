@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { APP_VERSION } from "@/lib/version";
 
 export const metadata: Metadata = {
   title: "유스피킹 | YuSpeaking",
@@ -21,6 +22,9 @@ export default function RootLayout({
     <html lang="ko">
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         {children}
+        <div className="pointer-events-none fixed bottom-1 right-2 z-50 text-[10px] text-slate-300 select-none">
+          목동유쌤영어 · v{APP_VERSION}
+        </div>
       </body>
     </html>
   );

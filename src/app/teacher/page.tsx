@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createClass, signOut } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export default async function TeacherDashboard({
   searchParams,
@@ -46,9 +47,12 @@ export default async function TeacherDashboard({
             required
             className="flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
           />
-          <button className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark">
+          <SubmitButton
+            pendingText="만드는 중…"
+            className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark"
+          >
             만들기
-          </button>
+          </SubmitButton>
         </form>
       </section>
 

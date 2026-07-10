@@ -200,6 +200,17 @@ export async function reevaluateSubmission(formData: FormData) {
   revalidatePath(`/teacher/assignments/${assignmentId}`);
 }
 
+// 과제 삭제 (중복 정리 등)
+export async function deleteAssignment(formData: FormData) {
+  await requireTeacher();
+  const classId = String(formData.get("classId") || "");
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const supabase = createClient();
+  // RLS 로 본인 반 과제만 삭제 가능 (submissions 는 ON DELETE CASCADE)
+  await supabase.from("assignments").delete().eq("id", assignmentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // 샘플 음성 재생성 (TTS 실패했거나 지문 수정 후)
 export async function regenerateSample(formData: FormData) {
   await requireTeacher();

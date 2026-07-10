@@ -7,7 +7,9 @@ import {
   deleteStudent,
   createAssignment,
   regenerateSample,
+  deleteAssignment,
 } from "../../actions";
+import SubmitButton from "@/components/SubmitButton";
 
 export default async function ClassDetailPage({
   params,
@@ -84,9 +86,12 @@ export default async function ClassDetailPage({
               required
               className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
             />
-            <button className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">
+            <SubmitButton
+              pendingText="추가 중…"
+              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
               추가
-            </button>
+            </SubmitButton>
           </form>
 
           <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
@@ -143,9 +148,12 @@ export default async function ClassDetailPage({
                   className="ml-2 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
                 />
               </label>
-              <button className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark">
+              <SubmitButton
+                pendingText="샘플음성 만드는 중… (몇 초 걸려요)"
+                className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark"
+              >
                 등록 (샘플음성 생성)
-              </button>
+              </SubmitButton>
             </form>
           </details>
 
@@ -181,9 +189,22 @@ export default async function ClassDetailPage({
                     <form action={regenerateSample}>
                       <input type="hidden" name="classId" value={classId} />
                       <input type="hidden" name="assignmentId" value={a.id} />
-                      <button className="text-slate-400 hover:text-brand hover:underline">
+                      <SubmitButton
+                        pendingText="생성 중…"
+                        className="text-slate-400 hover:text-brand hover:underline"
+                      >
                         샘플음성 재생성
-                      </button>
+                      </SubmitButton>
+                    </form>
+                    <form action={deleteAssignment} className="ml-auto">
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="assignmentId" value={a.id} />
+                      <SubmitButton
+                        pendingText="삭제 중…"
+                        className="text-slate-400 hover:text-red-500 hover:underline"
+                      >
+                        삭제
+                      </SubmitButton>
                     </form>
                   </div>
                 </li>

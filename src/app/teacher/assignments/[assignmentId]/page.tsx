@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AzureScores, SubmissionStatus } from "@/lib/types";
 import { updateSubmissionReview, reevaluateSubmission } from "../../actions";
+import SubmitButton from "@/components/SubmitButton";
 
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
   submitted: "제출됨",
@@ -208,9 +209,12 @@ export default async function AssignmentDashboard({
                           />
                           검토완료로 표시
                         </label>
-                        <button className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark">
+                        <SubmitButton
+                          pendingText="저장 중…"
+                          className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                        >
                           저장
-                        </button>
+                        </SubmitButton>
                       </div>
                     </form>
 
@@ -218,9 +222,12 @@ export default async function AssignmentDashboard({
                     <form action={reevaluateSubmission}>
                       <input type="hidden" name="assignmentId" value={assignmentId} />
                       <input type="hidden" name="submissionId" value={sub.id} />
-                      <button className="text-xs text-slate-400 hover:text-brand hover:underline">
+                      <SubmitButton
+                        pendingText="재평가 중… (십여 초)"
+                        className="text-xs text-slate-400 hover:text-brand hover:underline"
+                      >
                         AI 재평가 실행
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                 </details>

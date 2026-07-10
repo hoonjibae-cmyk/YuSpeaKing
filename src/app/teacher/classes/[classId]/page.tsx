@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireTeacher } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { getTeacherContext } from "@/lib/teacher-context";
 import {
   addStudent,
   deleteStudent,
@@ -11,6 +10,7 @@ import {
   deleteAssignment,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 export default async function ClassDetailPage({
   params,
@@ -19,24 +19,25 @@ export default async function ClassDetailPage({
   params: { classId: string };
   searchParams: { error?: string };
 }) {
-  await requireTeacher();
-  const supabase = createClient();
+  const { db, effectiveId, isImpersonating, actingName } =
+    await getTeacherContext();
   const { classId } = params;
 
-  const { data: klass } = await supabase
+  const { data: klass } = await db
     .from("classes")
     .select("id, name, class_code")
     .eq("id", classId)
+    .eq("teacher_id", effectiveId)
     .single();
   if (!klass) notFound();
 
   const [{ data: students }, { data: assignments }] = await Promise.all([
-    supabase
+    db
       .from("students")
       .select("id, name, number")
       .eq("class_id", classId)
       .order("number"),
-    supabase
+    db
       .from("assignments")
       .select(
         "id, title, sample_audio_url, due_date, created_at, submissions(overall_score, status)"
@@ -47,6 +48,7 @@ export default async function ClassDetailPage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
+      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
       <Link href="/teacher" className="text-sm text-slate-500 hover:underline">
         ← 반 목록
       </Link>

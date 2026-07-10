@@ -1,36 +1,41 @@
 import Link from "next/link";
-import { requireTeacher, getRole } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { getRole } from "@/lib/auth";
+import { getTeacherContext } from "@/lib/teacher-context";
 import { createClass, signOut } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 export default async function TeacherDashboard({
   searchParams,
 }: {
   searchParams: { error?: string };
 }) {
-  const teacher = await requireTeacher();
+  const { db, effectiveId, isImpersonating, actingName } =
+    await getTeacherContext();
   const role = await getRole();
-  const supabase = createClient();
 
-  const { data: classes } = await supabase
+  const { data: classes } = await db
     .from("classes")
     .select("id, name, class_code, created_at, students(count), assignments(count)")
+    .eq("teacher_id", effectiveId)
     .order("created_at", { ascending: false });
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
+      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <CrownMark className="h-9 w-9" />
           <div>
             <h1 className="text-2xl font-bold text-brand">유스피킹 · 선생님</h1>
-            <p className="text-sm text-slate-500">{teacher.email}</p>
+            <p className="text-sm text-slate-500">
+              {isImpersonating ? `${actingName} 선생님` : "내 반 관리"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {role === "admin" && (
+          {role === "admin" && !isImpersonating && (
             <Link
               href="/admin"
               className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-indigo-100"

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireTeacher } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AzureScores, SubmissionStatus } from "@/lib/types";
 import {
@@ -10,6 +9,7 @@ import {
   resetAttempts,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
   submitted: "제출됨",
@@ -23,25 +23,25 @@ export default async function AssignmentDashboard({
 }: {
   params: { assignmentId: string };
 }) {
-  await requireTeacher();
-  const supabase = createClient();
+  const { db, effectiveId, isImpersonating, actingName } =
+    await getTeacherContext();
   const { assignmentId } = params;
 
-  // RLS: 본인 반 과제만
-  const { data: assignment } = await supabase
+  const { data: assignment } = await db
     .from("assignments")
-    .select("id, class_id, title, passage_text, max_attempts")
+    .select("id, class_id, title, passage_text, max_attempts, classes!inner(teacher_id)")
     .eq("id", assignmentId)
+    .eq("classes.teacher_id", effectiveId)
     .single();
   if (!assignment) notFound();
 
   const [{ data: students }, { data: submissions }] = await Promise.all([
-    supabase
+    db
       .from("students")
       .select("id, name, number")
       .eq("class_id", assignment.class_id)
       .order("number"),
-    supabase
+    db
       .from("submissions")
       .select(
         "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, audio_expired, error_message, attempt_count"
@@ -84,6 +84,7 @@ export default async function AssignmentDashboard({
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
+      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
       <Link
         href={`/teacher/classes/${assignment.class_id}`}
         className="text-sm text-slate-500 hover:underline"

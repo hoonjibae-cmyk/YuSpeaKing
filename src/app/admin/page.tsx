@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
+import { impersonateTeacher } from "./actions";
 import { CrownMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
@@ -135,15 +136,22 @@ export default async function AdminDashboard() {
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <div className="font-medium">
-                    {r.name}
+                  <form action={impersonateTeacher}>
+                    <input type="hidden" name="teacherId" value={r.id} />
+                    <button
+                      type="submit"
+                      className="text-left font-medium text-brand hover:underline"
+                      title="이 선생님 화면으로 들어가기"
+                    >
+                      {r.name}
+                    </button>
                     {r.isAdmin && (
                       <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand">
                         운영자
                       </span>
                     )}
-                  </div>
-                  <div className="text-xs text-slate-400">{r.email}</div>
+                    <div className="text-xs text-slate-400">{r.email}</div>
+                  </form>
                 </td>
                 <td className="px-3 py-3 text-slate-600">
                   {r.classCount}반 · {r.studentCount}명

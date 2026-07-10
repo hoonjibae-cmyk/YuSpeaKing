@@ -37,6 +37,7 @@ export interface Assignment {
   passage_text: string;
   sample_audio_url: string | null;
   due_date: string | null;
+  max_attempts: number;
   created_at: string;
 }
 
@@ -60,6 +61,7 @@ export interface Submission {
   assignment_id: string;
   student_id: string;
   audio_path: string;
+  attempt_count: number;
   status: SubmissionStatus;
   azure_scores: AzureScores | null;
   overall_score: number | null;

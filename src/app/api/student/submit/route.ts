@@ -26,12 +26,28 @@ export async function POST(req: Request) {
   // 과제가 이 학생의 반 것인지 확인
   const { data: assignment } = await admin
     .from("assignments")
-    .select("id, class_id")
+    .select("id, class_id, max_attempts")
     .eq("id", assignmentId)
     .single();
   if (!assignment || assignment.class_id !== session.classId) {
     return NextResponse.json({ error: "권한이 없어요" }, { status: 403 });
   }
+
+  // 재제출 횟수 제한 확인
+  const { data: existing } = await admin
+    .from("submissions")
+    .select("attempt_count")
+    .eq("assignment_id", assignmentId)
+    .eq("student_id", session.studentId)
+    .maybeSingle();
+  const usedAttempts = existing?.attempt_count ?? 0;
+  if (usedAttempts >= assignment.max_attempts) {
+    return NextResponse.json(
+      { error: "제출 횟수를 모두 사용했어요. 선생님께 문의하세요." },
+      { status: 403 }
+    );
+  }
+  const nextAttempt = usedAttempts + 1;
 
   // 오디오 업로드 (submissions 버킷, 비공개)
   const ext = audio.type.includes("wav") ? "wav" : "webm";
@@ -56,6 +72,7 @@ export async function POST(req: Request) {
         assignment_id: assignmentId,
         student_id: session.studentId,
         audio_path: path,
+        attempt_count: nextAttempt,
         status: "submitted",
         azure_scores: null,
         overall_score: null,

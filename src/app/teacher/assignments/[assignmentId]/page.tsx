@@ -4,7 +4,11 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AzureScores, SubmissionStatus } from "@/lib/types";
-import { updateSubmissionReview, reevaluateSubmission } from "../../actions";
+import {
+  updateSubmissionReview,
+  reevaluateSubmission,
+  resetAttempts,
+} from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
@@ -26,7 +30,7 @@ export default async function AssignmentDashboard({
   // RLS: 본인 반 과제만
   const { data: assignment } = await supabase
     .from("assignments")
-    .select("id, class_id, title, passage_text")
+    .select("id, class_id, title, passage_text, max_attempts")
     .eq("id", assignmentId)
     .single();
   if (!assignment) notFound();
@@ -40,7 +44,7 @@ export default async function AssignmentDashboard({
     supabase
       .from("submissions")
       .select(
-        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, error_message"
+        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, error_message, attempt_count"
       )
       .eq("assignment_id", assignmentId),
   ]);
@@ -218,17 +222,34 @@ export default async function AssignmentDashboard({
                       </div>
                     </form>
 
-                    {/* 재평가 */}
-                    <form action={reevaluateSubmission}>
-                      <input type="hidden" name="assignmentId" value={assignmentId} />
-                      <input type="hidden" name="submissionId" value={sub.id} />
-                      <SubmitButton
-                        pendingText="재평가 중… (십여 초)"
-                        className="text-xs text-slate-400 hover:text-brand hover:underline"
-                      >
-                        AI 재평가 실행
-                      </SubmitButton>
-                    </form>
+                    {/* 시도 횟수 & 액션 */}
+                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                      <span className="text-xs text-slate-400">
+                        제출 {sub.attempt_count ?? 0}/{assignment.max_attempts}회
+                      </span>
+                      <form action={reevaluateSubmission}>
+                        <input type="hidden" name="assignmentId" value={assignmentId} />
+                        <input type="hidden" name="submissionId" value={sub.id} />
+                        <SubmitButton
+                          pendingText="재평가 중… (십여 초)"
+                          className="text-xs text-slate-400 hover:text-brand hover:underline"
+                        >
+                          AI 재평가 실행
+                        </SubmitButton>
+                      </form>
+                      {(sub.attempt_count ?? 0) >= assignment.max_attempts && (
+                        <form action={resetAttempts}>
+                          <input type="hidden" name="assignmentId" value={assignmentId} />
+                          <input type="hidden" name="submissionId" value={sub.id} />
+                          <SubmitButton
+                            pendingText="처리 중…"
+                            className="text-xs text-brand hover:underline"
+                          >
+                            재제출 기회 주기
+                          </SubmitButton>
+                        </form>
+                      )}
+                    </div>
                   </div>
                 </details>
               )}

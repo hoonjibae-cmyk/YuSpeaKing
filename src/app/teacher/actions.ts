@@ -115,6 +115,10 @@ export async function createAssignment(formData: FormData) {
   const title = String(formData.get("title") || "").trim();
   const passageText = String(formData.get("passage_text") || "").trim();
   const dueDate = String(formData.get("due_date") || "") || null;
+  const maxAttempts = Math.min(
+    10,
+    Math.max(1, parseInt(String(formData.get("max_attempts") || "3"), 10) || 3)
+  );
 
   if (!classId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
@@ -128,6 +132,7 @@ export async function createAssignment(formData: FormData) {
       title,
       passage_text: passageText,
       due_date: dueDate,
+      max_attempts: maxAttempts,
     })
     .select()
     .single();
@@ -179,6 +184,19 @@ export async function updateSubmissionReview(formData: FormData) {
     .update({ teacher_feedback: teacherFeedback, teacher_reviewed: reviewed })
     .eq("id", submissionId);
 
+  revalidatePath(`/teacher/assignments/${assignmentId}`);
+}
+
+// 학생에게 재제출 기회 다시 주기 (시도 횟수 초기화)
+export async function resetAttempts(formData: FormData) {
+  await requireTeacher();
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const submissionId = String(formData.get("submissionId") || "");
+  const supabase = createClient();
+  await supabase
+    .from("submissions")
+    .update({ attempt_count: 0 })
+    .eq("id", submissionId);
   revalidatePath(`/teacher/assignments/${assignmentId}`);
 }
 

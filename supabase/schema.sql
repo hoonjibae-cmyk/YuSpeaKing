@@ -71,6 +71,7 @@ create table if not exists public.assignments (
   passage_text     text not null,
   sample_audio_url text,                 -- OpenAI TTS 생성 후 채워짐
   due_date         date,
+  max_attempts     int not null default 3, -- 학생 재제출 허용 횟수
   created_at       timestamptz not null default now()
 );
 create index if not exists assignments_class_idx on public.assignments (class_id);
@@ -83,6 +84,7 @@ create table if not exists public.submissions (
   assignment_id    uuid not null references public.assignments (id) on delete cascade,
   student_id       uuid not null references public.students (id) on delete cascade,
   audio_path       text not null,        -- submissions 버킷 내 경로
+  attempt_count    int not null default 0, -- 제출(시도) 횟수 누적
   status           text not null default 'submitted'
                      check (status in ('submitted','evaluating','evaluated','error')),
   azure_scores     jsonb,                -- Azure 발음평가 원본 점수

@@ -140,14 +140,27 @@ export default async function ClassDetailPage({
                 rows={5}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
               />
-              <label className="block text-sm text-slate-500">
-                마감일 (선택)
-                <input
-                  name="due_date"
-                  type="date"
-                  className="ml-2 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
-                />
-              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="block text-sm text-slate-500">
+                  마감일 (선택)
+                  <input
+                    name="due_date"
+                    type="date"
+                    className="ml-2 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
+                  />
+                </label>
+                <label className="block text-sm text-slate-500">
+                  재제출 허용 횟수
+                  <input
+                    name="max_attempts"
+                    type="number"
+                    min={1}
+                    max={10}
+                    defaultValue={3}
+                    className="ml-2 w-16 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
+                  />
+                </label>
+              </div>
               <SubmitButton
                 pendingText="샘플음성 만드는 중… (몇 초 걸려요)"
                 className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark"

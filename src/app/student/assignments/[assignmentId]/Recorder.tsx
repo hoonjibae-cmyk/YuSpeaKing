@@ -16,9 +16,11 @@ type Phase =
 export default function Recorder({
   assignmentId,
   alreadySubmitted,
+  remainingAttempts,
 }: {
   assignmentId: string;
   alreadySubmitted: boolean;
+  remainingAttempts: number;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>(alreadySubmitted ? "done" : "idle");
@@ -121,14 +123,29 @@ export default function Recorder({
         <div className="text-4xl">✅</div>
         <p className="mt-2 font-semibold text-green-700">제출되었습니다!</p>
         <p className="mt-1 text-sm text-green-600">
-          곧 발음 피드백을 확인할 수 있어요.
+          아래에서 발음 피드백을 확인해요.
         </p>
-        <button
-          onClick={reset}
-          className="mt-4 text-sm text-slate-500 underline hover:text-slate-700"
-        >
-          다시 녹음해서 제출하기
-        </button>
+        {remainingAttempts > 0 ? (
+          <button
+            onClick={reset}
+            className="mt-4 text-sm text-slate-500 underline hover:text-slate-700"
+          >
+            다시 녹음해서 제출하기 (남은 {remainingAttempts}회)
+          </button>
+        ) : (
+          <p className="mt-4 text-xs text-slate-400">
+            제출 횟수를 모두 사용했어요.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // 제출 횟수 소진 (미제출 상태에서 이론상 도달 가능)
+  if (phase === "idle" && remainingAttempts <= 0) {
+    return (
+      <div className="rounded-2xl bg-slate-100 p-6 text-center text-sm text-slate-500">
+        제출 횟수를 모두 사용했어요. 선생님께 문의하세요.
       </div>
     );
   }

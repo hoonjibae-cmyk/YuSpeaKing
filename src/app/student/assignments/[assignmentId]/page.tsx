@@ -14,7 +14,7 @@ export default async function StudentAssignmentPage({
 
   const { data: assignment } = await admin
     .from("assignments")
-    .select("id, class_id, title, passage_text, sample_audio_url")
+    .select("id, class_id, title, passage_text, sample_audio_url, max_attempts")
     .eq("id", params.assignmentId)
     .single();
 
@@ -23,7 +23,7 @@ export default async function StudentAssignmentPage({
 
   const { data: submission } = await admin
     .from("submissions")
-    .select("status, overall_score, student_feedback")
+    .select("status, overall_score, student_feedback, attempt_count")
     .eq("assignment_id", assignment.id)
     .eq("student_id", session.studentId)
     .maybeSingle();
@@ -31,6 +31,9 @@ export default async function StudentAssignmentPage({
   const alreadySubmitted =
     !!submission &&
     ["submitted", "evaluating", "evaluated"].includes(submission.status);
+
+  const usedAttempts = submission?.attempt_count ?? 0;
+  const remainingAttempts = Math.max(0, assignment.max_attempts - usedAttempts);
 
   return (
     <main className="mx-auto max-w-lg px-6 py-8">
@@ -67,13 +70,23 @@ export default async function StudentAssignmentPage({
 
       {/* 3. 녹음 & 제출 */}
       <section className="mt-6">
-        <h2 className="text-sm font-semibold text-slate-500">
-          3. 직접 읽으며 녹음하기 🎙️
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-500">
+            3. 직접 읽으며 녹음하기 🎙️
+          </h2>
+          <span
+            className={`text-xs font-medium ${
+              remainingAttempts <= 0 ? "text-red-500" : "text-slate-500"
+            }`}
+          >
+            남은 제출 {remainingAttempts}/{assignment.max_attempts}회
+          </span>
+        </div>
         <div className="mt-2">
           <Recorder
             assignmentId={assignment.id}
             alreadySubmitted={alreadySubmitted}
+            remainingAttempts={remainingAttempts}
           />
         </div>
       </section>

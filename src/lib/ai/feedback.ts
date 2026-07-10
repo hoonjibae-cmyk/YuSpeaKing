@@ -56,7 +56,7 @@ ${referenceText}
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1200,
+      max_tokens: 2500,
       system,
       messages: [{ role: "user", content: user }],
     }),
@@ -77,7 +77,7 @@ ${referenceText}
 }
 
 function parseFeedback(text: string): TwoTierFeedback {
-  // JSON 블록 추출 (혹시 코드펜스가 붙어도 대응)
+  // 1) 정상 JSON 파싱 시도 (코드펜스 등 대응)
   const match = text.match(/\{[\s\S]*\}/);
   const raw = match ? match[0] : text;
   try {
@@ -87,10 +87,33 @@ function parseFeedback(text: string): TwoTierFeedback {
       teacherFeedback: String(obj.teacherFeedback ?? "").trim(),
     };
   } catch {
-    // 파싱 실패 시 전체 텍스트를 교사용에 넣고 학생용은 기본 메시지
+    // 2) 파싱 실패(예: 토큰 초과로 JSON 끝이 잘림) → 필드 값만 정규식으로 구제
+    const student = extractField(text, "studentFeedback");
+    const teacher = extractField(text, "teacherFeedback");
+    if (student || teacher) {
+      return {
+        studentFeedback:
+          student || "녹음이 잘 제출되었어요! 다음에도 또박또박 읽어봐요 🙂",
+        teacherFeedback: teacher || student || "",
+      };
+    }
+    // 3) 그래도 안 되면 원본 기호 노출 방지: 기본 학생 메시지 + 정리된 텍스트
     return {
       studentFeedback: "녹음이 잘 제출되었어요! 다음에도 또박또박 읽어봐요 🙂",
-      teacherFeedback: text,
+      teacherFeedback: text.replace(/[{}"]/g, "").trim(),
     };
+  }
+}
+
+// 잘린 JSON 에서도 "field": "..." 의 값 문자열만 뽑아 이스케이프 해제
+function extractField(text: string, field: string): string {
+  const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`, "m");
+  const m = text.match(re);
+  if (!m) return "";
+  const body = m[1];
+  try {
+    return JSON.parse(`"${body}"`).trim();
+  } catch {
+    return body.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
   }
 }

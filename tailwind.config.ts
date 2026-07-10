@@ -9,10 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // 목동유쌤영어 로고 네이비-블루 톤
         brand: {
-          DEFAULT: "#4f46e5",
-          light: "#eef2ff",
-          dark: "#3730a3",
+          DEFAULT: "#2b52a0",
+          light: "#e9effb",
+          dark: "#1e3a75",
         },
       },
     },

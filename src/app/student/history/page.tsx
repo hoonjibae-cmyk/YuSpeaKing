@@ -36,19 +36,19 @@ function ScoreTrend({ points }: { points: { score: number; label: string }[] }) 
       {/* 격자선 */}
       {[0, 25, 50, 75, 100].map((g) => (
         <g key={g}>
-          <line x1={pad} y1={y(g)} x2={W - pad} y2={y(g)} stroke="#eef2ff" strokeWidth="1" />
+          <line x1={pad} y1={y(g)} x2={W - pad} y2={y(g)} stroke="#e9effb" strokeWidth="1" />
           <text x={4} y={y(g) + 3} fontSize="8" fill="#94a3b8">
             {g}
           </text>
         </g>
       ))}
       {/* 라인 */}
-      <path d={path} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={path} fill="none" stroke="#2b52a0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       {/* 점 + 점수 */}
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={x(i)} cy={y(p.score)} r="3.5" fill="#4f46e5" />
-          <text x={x(i)} y={y(p.score) - 7} fontSize="8" fill="#4f46e5" textAnchor="middle">
+          <circle cx={x(i)} cy={y(p.score)} r="3.5" fill="#1e3a75" />
+          <text x={x(i)} y={y(p.score) - 7} fontSize="8" fill="#1e3a75" textAnchor="middle">
             {p.score}
           </text>
         </g>

@@ -38,7 +38,7 @@ export default async function TeacherDashboard({
           {role === "admin" && !isImpersonating && (
             <Link
               href="/admin"
-              className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-indigo-100"
+              className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
             >
               운영자 대시보드
             </Link>

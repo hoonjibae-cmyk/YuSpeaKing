@@ -11,12 +11,12 @@ function HeroArt() {
     >
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#8b5cf6" />
+          <stop offset="0" stopColor="#3b6bb8" />
+          <stop offset="1" stopColor="#1e3a75" />
         </linearGradient>
         <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#a5b4fc" />
-          <stop offset="1" stopColor="#c4b5fd" />
+          <stop offset="0" stopColor="#9db8e6" />
+          <stop offset="1" stopColor="#c3d3f0" />
         </linearGradient>
       </defs>
 
@@ -43,11 +43,11 @@ function HeroArt() {
       </g>
 
       {/* 헤드폰 (원어민 듣기) */}
-      <g stroke="#ede9fe" strokeWidth="7" fill="none" strokeLinecap="round">
+      <g stroke="#dbe6f7" strokeWidth="7" fill="none" strokeLinecap="round">
         <path d="M250 96 a44 44 0 0 1 88 0" />
       </g>
-      <rect x="242" y="94" width="18" height="34" rx="9" fill="#ede9fe" />
-      <rect x="328" y="94" width="18" height="34" rx="9" fill="#ede9fe" />
+      <rect x="242" y="94" width="18" height="34" rx="9" fill="#dbe6f7" />
+      <rect x="328" y="94" width="18" height="34" rx="9" fill="#dbe6f7" />
 
       {/* 마이크 (녹음) */}
       <g transform="translate(286,150)">
@@ -75,6 +75,8 @@ export default function Home() {
       <div className="space-y-3">
         <h1 className="text-4xl font-bold tracking-tight text-brand">유스피킹</h1>
         <p className="text-lg text-slate-600">
+          <span className="font-semibold text-brand">목동유쌤영어</span>가 개발한
+          <br />
           원어민 발음을 듣고, 직접 읽고, AI가 바로 평가해주는
           <br />
           초등 영어 스피킹 학습 서비스

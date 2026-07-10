@@ -99,12 +99,16 @@ export default async function AssignmentDashboard({
         <StatCard label="최고" value={maxScore != null ? `${maxScore}점` : "-"} />
         <StatCard label="최저" value={minScore != null ? `${minScore}점` : "-"} />
       </div>
-      {nonSubmitters.length > 0 && (
+      {total > 0 && nonSubmitters.length === 0 ? (
+        <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+          ✅ 전원 제출 완료! ({total}명 모두)
+        </p>
+      ) : nonSubmitters.length > 0 ? (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
           미제출 {nonSubmitters.length}명:{" "}
           {nonSubmitters.map((s) => `${s.number} ${s.name}`).join(", ")}
         </p>
-      )}
+      ) : null}
 
       <div className="mt-6 space-y-3">
         {students?.map((student) => {

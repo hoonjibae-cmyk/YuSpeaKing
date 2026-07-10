@@ -8,6 +8,7 @@ type SubRow = {
   status: string;
   student_feedback: string | null;
   audio_path: string | null;
+  audio_expired: boolean;
   created_at: string;
   assignment_id: string;
   assignments: { title: string } | { title: string }[] | null;
@@ -63,7 +64,7 @@ export default async function StudentHistoryPage() {
   const { data: rows } = await admin
     .from("submissions")
     .select(
-      "id, overall_score, status, student_feedback, audio_path, created_at, assignment_id, assignments(title)"
+      "id, overall_score, status, student_feedback, audio_path, audio_expired, created_at, assignment_id, assignments(title)"
     )
     .eq("student_id", session.studentId)
     .order("created_at", { ascending: true });
@@ -84,7 +85,7 @@ export default async function StudentHistoryPage() {
   const signed = new Map<string, string>();
   await Promise.all(
     subs
-      .filter((s) => s.audio_path)
+      .filter((s) => s.audio_path && !s.audio_expired)
       .map(async (s) => {
         const { data } = await admin.storage
           .from("submissions")

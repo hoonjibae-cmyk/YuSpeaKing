@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireTeacher } from "@/lib/auth";
+import { requireTeacher, getRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createClass, signOut } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
@@ -10,6 +10,7 @@ export default async function TeacherDashboard({
   searchParams: { error?: string };
 }) {
   const teacher = await requireTeacher();
+  const role = await getRole();
   const supabase = createClient();
 
   const { data: classes } = await supabase
@@ -24,11 +25,21 @@ export default async function TeacherDashboard({
           <h1 className="text-2xl font-bold text-brand">유스피킹 · 선생님</h1>
           <p className="text-sm text-slate-500">{teacher.email}</p>
         </div>
-        <form action={signOut}>
-          <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
-            로그아웃
-          </button>
-        </form>
+        <div className="flex items-center gap-2">
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-indigo-100"
+            >
+              운영자 대시보드
+            </Link>
+          )}
+          <form action={signOut}>
+            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
+              로그아웃
+            </button>
+          </form>
+        </div>
       </header>
 
       {searchParams.error && (

@@ -108,6 +108,7 @@ Vercel에 넣을 최종 목록입니다. `.env.example` 과 동일합니다.
 | `AZURE_SPEECH_REGION` (선택) | Azure | 서버 · 비우면 Whisper 대체 |
 | `ANTHROPIC_API_KEY` | Anthropic | **서버 전용** |
 | `ANTHROPIC_MODEL` (선택) | 직접 지정 | 서버 |
+| `CRON_SECRET` | 직접 생성 | **서버 전용** · 음원 자동삭제 크론 보호 |
 
 ---
 

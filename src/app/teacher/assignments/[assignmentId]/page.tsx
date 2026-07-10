@@ -44,7 +44,7 @@ export default async function AssignmentDashboard({
     supabase
       .from("submissions")
       .select(
-        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, error_message, attempt_count"
+        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, audio_expired, error_message, attempt_count"
       )
       .eq("assignment_id", assignmentId),
   ]);
@@ -56,7 +56,7 @@ export default async function AssignmentDashboard({
   const signedUrls = new Map<string, string>();
   await Promise.all(
     (submissions ?? [])
-      .filter((s) => s.audio_path)
+      .filter((s) => s.audio_path && !s.audio_expired)
       .map(async (s) => {
         const { data } = await admin.storage
           .from("submissions")
@@ -165,13 +165,17 @@ export default async function AssignmentDashboard({
 
                   <div className="mt-4 space-y-4">
                     {/* 오디오 */}
-                    {signedUrls.get(sub.id) && (
+                    {signedUrls.get(sub.id) ? (
                       <audio
                         src={signedUrls.get(sub.id)}
                         controls
                         className="w-full"
                       />
-                    )}
+                    ) : sub.audio_expired ? (
+                      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
+                        음원 보관기간(60일)이 지나 삭제되었습니다. (점수·피드백은 유지)
+                      </p>
+                    ) : null}
 
                     {/* 오류 */}
                     {sub.status === "error" && (

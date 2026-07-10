@@ -13,6 +13,7 @@ create table if not exists public.teachers (
   id         uuid primary key references auth.users (id) on delete cascade,
   name       text not null default '',
   email      text not null,
+  role       text not null default 'teacher', -- 'teacher' | 'admin'(운영자)
   created_at timestamptz not null default now()
 );
 
@@ -85,6 +86,7 @@ create table if not exists public.submissions (
   assignment_id    uuid not null references public.assignments (id) on delete cascade,
   student_id       uuid not null references public.students (id) on delete cascade,
   audio_path       text not null,        -- submissions 버킷 내 경로
+  audio_expired    boolean not null default false, -- 60일 후 음원 삭제 여부
   attempt_count    int not null default 0, -- 제출(시도) 횟수 누적
   status           text not null default 'submitted'
                      check (status in ('submitted','evaluating','evaluated','error')),

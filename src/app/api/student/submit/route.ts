@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getStudentSession } from "@/lib/student-session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { evaluateSubmission } from "@/lib/ai/evaluate";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // Azure + Claude 호출 시간 확보
 
 // 학생 녹음 제출: 오디오 업로드 + submission 레코드 생성
 // (M3에서 이 뒤에 AI 평가 트리거를 연결)
@@ -75,7 +77,10 @@ export async function POST(req: Request) {
     );
   }
 
-  // TODO(M3): 여기서 AI 평가 파이프라인 트리거 → status 'evaluating' → 'evaluated'
+  // AI 평가 (Azure 발음평가 → Claude 2단 피드백). 인라인 await:
+  // 학생은 "제출 중..." 상태를 보다가 완료 후 즉시 간단 피드백을 확인.
+  // 실패해도 evaluateSubmission 내부에서 status='error' 로 처리되어 제출 자체는 유효.
+  await evaluateSubmission(submission.id);
 
   return NextResponse.json({ ok: true, submissionId: submission.id });
 }

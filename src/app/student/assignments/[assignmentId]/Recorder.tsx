@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { blobToWav16kMono } from "@/lib/wav-client";
 
 type Phase = "idle" | "recording" | "recorded" | "uploading" | "done" | "error";
 
@@ -70,9 +71,11 @@ export default function Recorder({
     setPhase("uploading");
     setError(null);
     try {
+      // Azure 발음평가용 16kHz mono WAV 로 변환 후 업로드
+      const wav = await blobToWav16kMono(blobRef.current);
       const fd = new FormData();
       fd.append("assignmentId", assignmentId);
-      fd.append("audio", blobRef.current, "recording.webm");
+      fd.append("audio", wav, "recording.wav");
       const res = await fetch("/api/student/submit", {
         method: "POST",
         body: fd,

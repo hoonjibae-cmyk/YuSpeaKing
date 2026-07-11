@@ -62,7 +62,19 @@ export default function Recorder({
 
   function onFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일 다시 선택 가능하도록 초기화
     if (!file) return;
+    if (!file.type.startsWith("audio/")) {
+      setError("오디오 파일만 올릴 수 있어요. (mp3, m4a, wav 등)");
+      setPhase("error");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setError("파일이 너무 커요. 25MB 이하의 녹음 파일을 올려 주세요.");
+      setPhase("error");
+      return;
+    }
+    setError(null);
     blobRef.current = file;
     setAudioUrl(URL.createObjectURL(file));
     setPhase("recorded");
@@ -158,16 +170,23 @@ export default function Recorder({
         </p>
       )}
 
-      {phase === "idle" && (
-        <div className="space-y-3 text-center">
+      {(phase === "idle" || phase === "error") && (
+        <div className="space-y-3">
           <button
             onClick={startRecording}
             className="w-full rounded-2xl bg-red-500 py-5 text-lg font-semibold text-white transition hover:bg-red-600"
           >
-            🔴 녹음 시작하기
+            🔴 지금 녹음하기
           </button>
-          <label className="block cursor-pointer text-sm text-slate-500 hover:text-brand">
-            또는 녹음 파일 올리기
+
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            또는
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 py-4 text-base font-medium text-slate-600 transition hover:border-brand hover:bg-brand-light hover:text-brand">
+            📁 녹음 파일 올리기
             <input
               type="file"
               accept="audio/*"
@@ -175,6 +194,9 @@ export default function Recorder({
               className="hidden"
             />
           </label>
+          <p className="text-center text-xs text-slate-400">
+            미리 녹음해 둔 파일(mp3·m4a·wav 등)을 선택해 제출할 수 있어요.
+          </p>
         </div>
       )}
 

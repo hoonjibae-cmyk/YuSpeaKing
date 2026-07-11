@@ -1,0 +1,17 @@
+{
+  "name": "유스피킹 · 목동유쌤영어",
+  "short_name": "유스피킹",
+  "description": "초등 영어 스피킹 과제 제출 & AI 발음 평가",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e3a75",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

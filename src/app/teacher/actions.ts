@@ -241,6 +241,50 @@ export async function reevaluateSubmission(formData: FormData) {
   revalidatePath(`/teacher/assignments/${assignmentId}`);
 }
 
+// 과제 수정 (제목·지문·마감·재제출 횟수). 지문이 바뀌면 샘플음성 재생성.
+export async function updateAssignment(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const title = String(formData.get("title") || "").trim();
+  const passageText = String(formData.get("passage_text") || "").trim();
+  const dueDate = String(formData.get("due_date") || "") || null;
+  const maxAttempts = Math.min(
+    10,
+    Math.max(1, parseInt(String(formData.get("max_attempts") || "2"), 10) || 2)
+  );
+  if (!assignmentId || !title || !passageText) {
+    redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
+  }
+
+  const { data: current } = await db
+    .from("assignments")
+    .select("passage_text")
+    .eq("id", assignmentId)
+    .single();
+
+  await db
+    .from("assignments")
+    .update({
+      title,
+      passage_text: passageText,
+      due_date: dueDate,
+      max_attempts: maxAttempts,
+    })
+    .eq("id", assignmentId);
+
+  // 지문이 바뀌었으면 샘플음성 재생성 (best-effort)
+  if (current && current.passage_text !== passageText) {
+    try {
+      await generateAndStoreSamples(assignmentId, passageText);
+    } catch (e) {
+      console.error("[TTS] 수정 후 재생성 실패:", e);
+    }
+  }
+
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // 과제 삭제 (중복 정리 등)
 export async function deleteAssignment(formData: FormData) {
   const { db } = await getTeacherContext();

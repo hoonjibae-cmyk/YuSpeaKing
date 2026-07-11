@@ -8,6 +8,7 @@ import {
   createAssignment,
   regenerateSample,
   deleteAssignment,
+  updateAssignment,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -40,7 +41,7 @@ export default async function ClassDetailPage({
     db
       .from("assignments")
       .select(
-        "id, title, sample_audio_url, due_date, created_at, submissions(overall_score, status)"
+        "id, title, passage_text, sample_audio_url, due_date, max_attempts, created_at, submissions(overall_score, status)"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
@@ -256,6 +257,61 @@ export default async function ClassDetailPage({
                       </SubmitButton>
                     </form>
                   </div>
+
+                  {/* 과제 수정 */}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
+                      수정
+                    </summary>
+                    <form action={updateAssignment} className="mt-2 space-y-2">
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="assignmentId" value={a.id} />
+                      <input
+                        name="title"
+                        defaultValue={a.title}
+                        required
+                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+                      />
+                      <textarea
+                        name="passage_text"
+                        defaultValue={a.passage_text as string}
+                        required
+                        rows={4}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+                      />
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        <label>
+                          마감일
+                          <input
+                            name="due_date"
+                            type="date"
+                            defaultValue={(a.due_date as string) ?? ""}
+                            className="ml-1 rounded border border-slate-300 px-2 py-1"
+                          />
+                        </label>
+                        <label>
+                          재제출
+                          <input
+                            name="max_attempts"
+                            type="number"
+                            min={1}
+                            max={10}
+                            defaultValue={a.max_attempts as number}
+                            className="ml-1 w-14 rounded border border-slate-300 px-2 py-1"
+                          />
+                        </label>
+                        <SubmitButton
+                          pendingText="저장 중…"
+                          className="ml-auto rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark"
+                        >
+                          저장
+                        </SubmitButton>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        지문을 바꾸면 샘플음성이 자동으로 다시 생성돼요.
+                      </p>
+                    </form>
+                  </details>
                 </li>
               );
             })}

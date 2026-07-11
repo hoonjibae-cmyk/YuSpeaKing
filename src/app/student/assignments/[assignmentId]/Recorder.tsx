@@ -41,7 +41,10 @@ export default function Recorder({
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        // iOS Safari는 webm 재생을 못 하므로 실제 녹음 포맷(mr.mimeType)으로 라벨링해야
+        // 미리듣기 <audio>가 정상 재생된다. (하드코딩 시 "오류" 표시)
+        const type = mr.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
         blobRef.current = blob;
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());

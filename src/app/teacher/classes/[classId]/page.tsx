@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTeacherContext } from "@/lib/teacher-context";
 import {
   addStudent,
+  bulkAddStudents,
   deleteStudent,
   resetStudentPin,
   createAssignment,
@@ -107,6 +108,33 @@ export default async function ClassDetailPage({
               추가
             </SubmitButton>
           </form>
+
+          {/* 여러 명 한 번에 (엑셀/CSV) */}
+          <details className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-medium text-brand">
+              📋 여러 명 한 번에 등록 (엑셀 붙여넣기)
+            </summary>
+            <form action={bulkAddStudents} className="mt-3 space-y-2">
+              <input type="hidden" name="classId" value={classId} />
+              <textarea
+                name="roster"
+                rows={6}
+                placeholder={"엑셀에서 번호·이름 두 열을 복사해 붙여넣거나, 한 줄에 하나씩:\n1, 민수\n2, 지영\n3, 하준"}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  이미 있는 번호는 이름이 갱신돼요.
+                </span>
+                <SubmitButton
+                  pendingText="등록 중…"
+                  className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                >
+                  일괄 등록
+                </SubmitButton>
+              </div>
+            </form>
+          </details>
 
           <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
             {(!students || students.length === 0) && (

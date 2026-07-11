@@ -131,6 +131,47 @@ export async function addStudent(formData: FormData) {
   revalidatePath(`/teacher/classes/${classId}`);
 }
 
+// 여러 학생 일괄 등록 (엑셀/CSV 붙여넣기: 한 줄에 "번호,이름" 또는 "번호[탭]이름")
+export async function bulkAddStudents(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const raw = String(formData.get("roster") || "");
+  if (!classId || !raw.trim()) redirect(`/teacher/classes/${classId}`);
+
+  const rows: { class_id: string; number: number; name: string }[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    const parts = t.split(/[\t,]+|\s{2,}|\s(?=\d)/).map((p) => p.trim()).filter(Boolean);
+    // 첫 토큰이 숫자면 번호, 아니면 두 번째에서 숫자 탐색
+    let number = NaN;
+    let name = "";
+    if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+      number = parseInt(parts[0], 10);
+      name = parts.slice(1).join(" ");
+    } else if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
+      number = parseInt(parts[parts.length - 1], 10);
+      name = parts.slice(0, -1).join(" ");
+    }
+    if (!Number.isNaN(number) && name) {
+      rows.push({ class_id: classId, number, name });
+    }
+  }
+
+  if (rows.length === 0) {
+    redirect(`/teacher/classes/${classId}?error=형식을+확인하세요+(예: 1,민수)`);
+  }
+
+  // 번호 기준 upsert (이미 있는 번호는 이름 갱신 → 재업로드 안전)
+  const { error } = await db
+    .from("students")
+    .upsert(rows, { onConflict: "class_id,number" });
+  if (error) {
+    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`);
+  }
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 export async function deleteStudent(formData: FormData) {
   const { db } = await getTeacherContext();
   const classId = String(formData.get("classId") || "");

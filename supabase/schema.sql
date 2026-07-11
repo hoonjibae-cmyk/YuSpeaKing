@@ -208,6 +208,23 @@ create policy monthly_reports_owner on public.monthly_reports
   );
 
 -- ============================================================
+--  usage_logs : 비용·사용량 로깅 (서버 전용)
+-- ============================================================
+create table if not exists public.usage_logs (
+  id            uuid primary key default gen_random_uuid(),
+  kind          text not null,
+  model         text,
+  input_tokens  int,
+  output_tokens int,
+  audio_seconds numeric,
+  chars         int,
+  cost_usd      numeric not null default 0,
+  created_at    timestamptz not null default now()
+);
+create index if not exists usage_logs_created_idx on public.usage_logs (created_at);
+alter table public.usage_logs enable row level security;
+
+-- ============================================================
 --  Storage 버킷
 --   sample-audio : 샘플 음성 (공개 읽기)
 --   submissions  : 학생 녹음 (비공개, 서명 URL로만 접근)

@@ -1,6 +1,7 @@
 import "server-only";
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { AzureScores } from "../types";
+import { logUsage } from "../usage";
 
 type WordResult = { word: string; accuracy: number; errorType?: string };
 type Segment = {
@@ -24,6 +25,10 @@ export async function assessPronunciation(
   if (!key || !region) {
     throw new Error("AZURE_SPEECH_KEY / AZURE_SPEECH_REGION 이 설정되지 않았습니다.");
   }
+
+  // 16kHz mono 16-bit WAV: (전체 - 44바이트 헤더) / (16000*2) = 초
+  const audioSeconds = Math.max(0, (wav.length - 44) / (16000 * 2));
+  await logUsage("azure", { model: "pronunciation-assessment", audioSeconds });
 
   const speechConfig = sdk.SpeechConfig.fromSubscription(key, region);
   speechConfig.speechRecognitionLanguage = "en-US";

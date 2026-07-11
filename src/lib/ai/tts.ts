@@ -1,4 +1,5 @@
 import "server-only";
+import { logUsage } from "../usage";
 
 // OpenAI TTS-HD 로 지문을 원어민 발음 음성(mp3)으로 합성
 // speed: 0.25~4.0 (1.0=정상, 0.75=천천히)
@@ -32,5 +33,6 @@ export async function synthesizeSpeech(
   }
 
   const arrayBuffer = await res.arrayBuffer();
+  await logUsage("tts", { model: "tts-1-hd", chars: text.length });
   return Buffer.from(arrayBuffer);
 }

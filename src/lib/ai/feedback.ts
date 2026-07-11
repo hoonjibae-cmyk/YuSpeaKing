@@ -1,5 +1,6 @@
 import "server-only";
 import type { AzureScores } from "../types";
+import { logUsage } from "../usage";
 
 export interface TwoTierFeedback {
   studentFeedback: string; // 학생용 간단·격려형 (즉시 노출)
@@ -77,7 +78,13 @@ ${referenceText}
 
   const data = (await res.json()) as {
     content?: Array<{ type: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
+  await logUsage("claude_feedback", {
+    model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+  });
   const text =
     data.content?.map((c) => c.text ?? "").join("").trim() ?? "";
 

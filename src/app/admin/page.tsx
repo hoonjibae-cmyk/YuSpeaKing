@@ -20,6 +20,28 @@ export default async function AdminDashboard() {
       admin.from("submissions").select("assignment_id, overall_score, status"),
     ]);
 
+  // 이번 달 AI 비용
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const { data: usage } = await admin
+    .from("usage_logs")
+    .select("kind, cost_usd")
+    .gte("created_at", monthStart);
+  const costByKind = new Map<string, number>();
+  let totalCost = 0;
+  (usage ?? []).forEach((u: { kind: string; cost_usd: number }) => {
+    const c = Number(u.cost_usd) || 0;
+    totalCost += c;
+    costByKind.set(u.kind, (costByKind.get(u.kind) ?? 0) + c);
+  });
+  const KIND_LABEL: Record<string, string> = {
+    tts: "샘플음성(TTS)",
+    azure: "발음평가(Azure)",
+    claude_feedback: "피드백(Claude)",
+    claude_monthly: "월말리포트(Claude)",
+  };
+  const usdKrw = 1350;
+
   const teachers = teachersRes.data ?? [];
   const classes = classesRes.data ?? [];
   const students = studentsRes.data ?? [];
@@ -112,7 +134,35 @@ export default async function AdminDashboard() {
         </form>
       </header>
 
-      <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      {/* 이번 달 AI 비용 */}
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-semibold">이번 달 AI 비용 (추정)</h2>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-brand">
+              ${totalCost.toFixed(2)}
+            </div>
+            <div className="text-xs text-slate-400">
+              ≈ {Math.round(totalCost * usdKrw).toLocaleString()}원
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {["tts", "azure", "claude_feedback", "claude_monthly"].map((k) => (
+            <div key={k} className="rounded-lg bg-slate-50 p-2 text-center">
+              <div className="text-xs text-slate-400">{KIND_LABEL[k]}</div>
+              <div className="mt-0.5 text-sm font-semibold text-slate-700">
+                ${(costByKind.get(k) ?? 0).toFixed(2)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400">
+          근사 요율 기준 추정치 · 실제 청구는 각 서비스 콘솔 기준. 환율 1,350원 가정.
+        </p>
+      </section>
+
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
             <tr>

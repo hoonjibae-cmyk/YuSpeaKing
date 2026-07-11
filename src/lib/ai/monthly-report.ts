@@ -1,5 +1,6 @@
 import "server-only";
 import type { MonthlyData } from "../monthly";
+import { logUsage } from "../usage";
 
 // 월말 리포트 초안(학부모 발송용) 생성. 교사가 이후 수정 가능.
 export async function generateMonthlyReportDraft(
@@ -64,6 +65,12 @@ ${itemsText || "(이번 달 과제 없음)"}`;
   }
   const json = (await res.json()) as {
     content?: Array<{ type: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
+  await logUsage("claude_monthly", {
+    model,
+    inputTokens: json.usage?.input_tokens,
+    outputTokens: json.usage?.output_tokens,
+  });
   return (json.content?.map((c) => c.text ?? "").join("") ?? "").trim();
 }

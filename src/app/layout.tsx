@@ -6,7 +6,13 @@ export const metadata: Metadata = {
   title: "유스피킹 | 목동유쌤영어",
   description: "초등 영어 스피킹 과제 제출 & AI 발음 평가",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "유스피킹" },
 };
 

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { AzureScores } from "@/lib/types";
+import WordHighlights from "@/components/WordHighlights";
 import Recorder from "./Recorder";
 
 export default async function StudentAssignmentPage({
@@ -25,7 +27,7 @@ export default async function StudentAssignmentPage({
 
   const { data: submission } = await admin
     .from("submissions")
-    .select("status, overall_score, student_feedback, attempt_count")
+    .select("status, overall_score, student_feedback, attempt_count, azure_scores")
     .eq("assignment_id", assignment.id)
     .eq("student_id", session.studentId)
     .maybeSingle();
@@ -124,6 +126,16 @@ export default async function StudentAssignmentPage({
           <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
             {submission.student_feedback}
           </p>
+          {(submission.azure_scores as AzureScores | null)?.words && (
+            <div className="mt-3">
+              <div className="mb-1 text-xs font-medium text-brand">
+                내가 읽은 단어 (색으로 확인해요)
+              </div>
+              <WordHighlights
+                words={(submission.azure_scores as AzureScores).words}
+              />
+            </div>
+          )}
         </section>
       )}
     </main>

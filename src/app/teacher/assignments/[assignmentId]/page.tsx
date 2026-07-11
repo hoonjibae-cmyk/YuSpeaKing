@@ -10,6 +10,7 @@ import {
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import WordHighlights from "@/components/WordHighlights";
 
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
   submitted: "제출됨",
@@ -196,22 +197,8 @@ export default async function AssignmentDashboard({
                       </div>
                     )}
 
-                    {/* 취약 단어 */}
-                    {scores?.words && scores.words.some((w) => w.errorType && w.errorType !== "None") && (
-                      <div className="text-sm">
-                        <span className="text-slate-500">취약 단어: </span>
-                        {scores.words
-                          .filter((w) => w.errorType && w.errorType !== "None")
-                          .map((w, i) => (
-                            <span
-                              key={i}
-                              className="mr-1 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-amber-700"
-                            >
-                              {w.word}
-                            </span>
-                          ))}
-                      </div>
-                    )}
+                    {/* 단어별 발음 하이라이트 */}
+                    {scores?.words && <WordHighlights words={scores.words} />}
 
                     {/* 학생에게 보인 간단 피드백 (참고) */}
                     {sub.student_feedback && (

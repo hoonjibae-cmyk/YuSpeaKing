@@ -46,13 +46,13 @@ export default async function StudentEntryPage({
               type="number"
               placeholder="번호"
               required
-              className="w-24 rounded-xl border border-slate-300 px-3 py-3 text-center focus:border-brand focus:outline-none"
+              className="w-20 shrink-0 rounded-xl border border-slate-300 px-3 py-3 text-center focus:border-brand focus:outline-none"
             />
             <input
               name="name"
               placeholder="이름"
               required
-              className="flex-1 rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none"
+              className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none"
             />
           </div>
           <SubmitButton

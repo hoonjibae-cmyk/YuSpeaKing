@@ -7,18 +7,23 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
 import { synthesizeSpeech } from "@/lib/ai/tts";
+import { normalizeVoice } from "@/lib/tts-voices";
 import { hashPassword } from "@/lib/student-session";
 import { notifyTeacher } from "@/lib/slack";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 
-// 정상 속도 + 느린(0.75배) 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
-async function generateAndStoreSamples(assignmentId: string, passageText: string) {
+// 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
+async function generateAndStoreSamples(
+  assignmentId: string,
+  passageText: string,
+  voice?: string
+) {
   const admin = createAdminClient();
   const [normal, slow] = await Promise.all([
-    synthesizeSpeech(passageText, "normal"),
-    synthesizeSpeech(passageText, "slow"),
+    synthesizeSpeech(passageText, "normal", voice),
+    synthesizeSpeech(passageText, "slow", voice),
   ]);
   const normalPath = `${assignmentId}.mp3`;
   const slowPath = `${assignmentId}_slow.mp3`;
@@ -331,6 +336,7 @@ export async function createAssignment(formData: FormData) {
     10,
     Math.max(1, parseInt(String(formData.get("max_attempts") || "2"), 10) || 2)
   );
+  const voice = normalizeVoice(String(formData.get("voice") || ""));
 
   if (!classId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
@@ -344,6 +350,7 @@ export async function createAssignment(formData: FormData) {
       passage_text: passageText,
       due_date: dueDate,
       max_attempts: maxAttempts,
+      sample_voice: voice,
     })
     .select()
     .single();
@@ -358,7 +365,7 @@ export async function createAssignment(formData: FormData) {
 
   // 샘플 음성 생성 (best-effort: 실패해도 과제는 생성됨. 나중에 재생성 가능)
   try {
-    await generateAndStoreSamples(assignment.id, passageText);
+    await generateAndStoreSamples(assignment.id, passageText, voice);
   } catch (e) {
     console.error("[TTS] 샘플음성 생성 실패:", e);
   }
@@ -430,7 +437,7 @@ export async function updateAssignment(formData: FormData) {
 
   const { data: current } = await db
     .from("assignments")
-    .select("passage_text")
+    .select("passage_text, sample_voice")
     .eq("id", assignmentId)
     .single();
 
@@ -444,10 +451,14 @@ export async function updateAssignment(formData: FormData) {
     })
     .eq("id", assignmentId);
 
-  // 지문이 바뀌었으면 샘플음성 재생성 (best-effort)
+  // 지문이 바뀌었으면 기존에 고른 음성으로 샘플음성 재생성 (best-effort)
   if (current && current.passage_text !== passageText) {
     try {
-      await generateAndStoreSamples(assignmentId, passageText);
+      await generateAndStoreSamples(
+        assignmentId,
+        passageText,
+        current.sample_voice ?? undefined
+      );
     } catch (e) {
       console.error("[TTS] 수정 후 재생성 실패:", e);
     }
@@ -539,13 +550,25 @@ export async function regenerateSample(formData: FormData) {
 
   const { data: assignment } = await db
     .from("assignments")
-    .select("id, passage_text")
+    .select("id, passage_text, sample_voice")
     .eq("id", assignmentId)
     .single();
   if (!assignment) redirect(`/teacher/classes/${classId}`);
 
+  // 재생성 시 선생님이 새 음성을 고르면 반영, 아니면 기존 음성 유지
+  const picked = String(formData.get("voice") || "").trim();
+  const voice = picked
+    ? normalizeVoice(picked)
+    : assignment.sample_voice ?? undefined;
+  if (picked) {
+    await db
+      .from("assignments")
+      .update({ sample_voice: voice })
+      .eq("id", assignmentId);
+  }
+
   try {
-    await generateAndStoreSamples(assignment.id, assignment.passage_text);
+    await generateAndStoreSamples(assignment.id, assignment.passage_text, voice);
   } catch (e) {
     console.error("[TTS] 재생성 실패:", e);
     redirect(`/teacher/classes/${classId}?error=샘플음성+생성+실패+(OpenAI+키+확인)`);

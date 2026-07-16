@@ -1,5 +1,6 @@
 import "server-only";
 import { logUsage } from "../usage";
+import { normalizeVoice } from "../tts-voices";
 
 export type TtsMode = "normal" | "slow";
 
@@ -20,13 +21,15 @@ const INSTRUCTIONS: Record<TtsMode, string> = {
 // 기본 모델은 gpt-4o-mini-tts (지시문으로 자연스러운 속도/톤 제어).
 export async function synthesizeSpeech(
   text: string,
-  mode: TtsMode = "normal"
+  mode: TtsMode = "normal",
+  voiceChoice?: string
 ): Promise<Buffer> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY 가 설정되지 않았습니다.");
 
   const model = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-  const voice = process.env.OPENAI_TTS_VOICE || "coral";
+  // 우선순위: 과제별 선택 음성 → 환경변수 → 기본값(coral)
+  const voice = normalizeVoice(voiceChoice || process.env.OPENAI_TTS_VOICE);
   const isGpt4o = model.startsWith("gpt-4o");
 
   const body: Record<string, unknown> = {

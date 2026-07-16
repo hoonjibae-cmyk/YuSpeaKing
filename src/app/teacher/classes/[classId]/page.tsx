@@ -17,6 +17,7 @@ import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
+import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 
 export default async function ClassDetailPage({
   params,
@@ -46,7 +47,7 @@ export default async function ClassDetailPage({
     db
       .from("assignments")
       .select(
-        "id, title, passage_text, sample_audio_url, sample_audio_slow_url, due_date, max_attempts, created_at, submissions(overall_score, status)"
+        "id, title, passage_text, sample_audio_url, sample_audio_slow_url, sample_voice, due_date, max_attempts, created_at, submissions(overall_score, status)"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
@@ -398,14 +399,28 @@ export default async function ClassDetailPage({
                     ) : (
                       <span className="text-amber-600">⚠ 샘플음성 없음</span>
                     )}
-                    <form action={regenerateSample}>
+                    <form action={regenerateSample} className="flex items-center gap-1.5">
                       <input type="hidden" name="classId" value={classId} />
                       <input type="hidden" name="assignmentId" value={a.id} />
+                      <select
+                        name="voice"
+                        defaultValue={
+                          (a.sample_voice as string) || DEFAULT_TTS_VOICE
+                        }
+                        className="max-w-[8.5rem] rounded border border-slate-200 px-1 py-0.5 text-[11px] text-slate-500 focus:border-brand focus:outline-none"
+                        title="음성 선택 후 재생성"
+                      >
+                        {TTS_VOICES.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.label}
+                          </option>
+                        ))}
+                      </select>
                       <SubmitButton
                         pendingText="생성 중…"
-                        className="text-slate-400 hover:text-brand hover:underline"
+                        className="whitespace-nowrap text-slate-400 hover:text-brand hover:underline"
                       >
-                        샘플음성 재생성
+                        음성 재생성
                       </SubmitButton>
                     </form>
                     <form action={deleteAssignment} className="ml-auto">

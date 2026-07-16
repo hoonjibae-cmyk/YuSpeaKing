@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
+import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 
 type Mode = "type" | "pdf";
 interface Excluded {
@@ -236,6 +237,20 @@ export default function PassageComposer({ classId }: { classId: string }) {
           required
           className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
         />
+        <label className="block text-sm text-slate-500">
+          🎙️ 샘플음성 목소리
+          <select
+            name="voice"
+            defaultValue={DEFAULT_TTS_VOICE}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+          >
+            {TTS_VOICES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="flex flex-wrap gap-4">
           <label className="block text-sm text-slate-500">
             마감일 (선택)

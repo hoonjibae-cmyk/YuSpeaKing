@@ -9,7 +9,12 @@ const RATES = {
   claudeOutputPerTok: 10 / 1_000_000, // Sonnet 5 인트로 $10 / 1M
 };
 
-type Kind = "tts" | "azure" | "claude_feedback" | "claude_monthly";
+type Kind =
+  | "tts"
+  | "azure"
+  | "claude_feedback"
+  | "claude_monthly"
+  | "claude_select";
 
 interface UsageInput {
   model?: string;
@@ -27,6 +32,7 @@ function estimateCost(kind: Kind, u: UsageInput): number {
       return (u.audioSeconds ?? 0) * RATES.azurePerSecond;
     case "claude_feedback":
     case "claude_monthly":
+    case "claude_select":
       return (
         (u.inputTokens ?? 0) * RATES.claudeInputPerTok +
         (u.outputTokens ?? 0) * RATES.claudeOutputPerTok

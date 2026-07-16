@@ -3,16 +3,24 @@ import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { studentLogout } from "../actions";
 import { CrownMark } from "@/components/Logo";
+import { todayKST } from "@/lib/date";
 
 export default async function StudentHome() {
   const session = await requireStudent();
   const admin = createAdminClient();
 
-  const { data: assignments } = await admin
+  const { data: allAssignments } = await admin
     .from("assignments")
     .select("id, title, due_date, created_at")
     .eq("class_id", session.classId)
     .order("created_at", { ascending: false });
+
+  // 마감이 지난 과제는 '지난 과제 목록'으로. 홈에는 진행 중(마감 전/마감 없음)만.
+  const today = todayKST();
+  const assignments = (allAssignments ?? []).filter(
+    (a) => !a.due_date || a.due_date >= today
+  );
+  const pastCount = (allAssignments ?? []).length - assignments.length;
 
   // 이 학생의 제출 상태
   const { data: subs } = await admin
@@ -27,9 +35,9 @@ export default async function StudentHome() {
     (m, s) => (s.overall_score != null ? Math.max(m, Number(s.overall_score)) : m),
     0
   );
-  // 최신 과제부터 연속으로 제출한 개수
+  // 최신 과제부터 연속으로 제출한 개수 (지난 과제 포함)
   let streak = 0;
-  for (const a of assignments ?? []) {
+  for (const a of allAssignments ?? []) {
     if (subMap.has(a.id)) streak++;
     else break;
   }
@@ -69,6 +77,16 @@ export default async function StudentHome() {
         </div>
       </header>
 
+      {pastCount > 0 && (
+        <Link
+          href="/student/past"
+          className="mt-5 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 transition hover:border-brand hover:text-brand"
+        >
+          <span>🗂️ 지난 과제 목록</span>
+          <span className="text-xs">마감된 과제 {pastCount}개 →</span>
+        </Link>
+      )}
+
       {/* 성취 배지 */}
       {submittedCount > 0 && (
         <section className="mt-5 rounded-2xl border border-brand/20 bg-brand-light p-4">
@@ -94,12 +112,14 @@ export default async function StudentHome() {
       )}
 
       <section className="mt-6 space-y-3">
-        {(!assignments || assignments.length === 0) && (
+        {assignments.length === 0 && (
           <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
-            아직 과제가 없어요 🙂
+            {pastCount > 0
+              ? "진행 중인 과제가 없어요. 지난 과제는 위에서 확인해요 🙂"
+              : "아직 과제가 없어요 🙂"}
           </p>
         )}
-        {assignments?.map((a) => {
+        {assignments.map((a) => {
           const status = subMap.get(a.id);
           const done = status === "submitted" || status === "evaluating" || status === "evaluated";
           return (

@@ -73,12 +73,13 @@ export async function signUp(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
   const name = String(formData.get("name") || "").trim();
-  const slackEmail = String(formData.get("slack_email") || "").trim();
+  // 로그인 이메일 = Slack 이메일 (하나만 사용)
+  const slackEmail = email;
 
-  if (!email || !password || !name || !slackEmail) {
+  if (!email || !password || !name) {
     redirect(
       `/teacher/login?mode=signup&error=${encodeURIComponent(
-        "이름·이메일·비밀번호·Slack 이메일을 모두 입력해 주세요"
+        "이름·이메일·비밀번호를 모두 입력해 주세요"
       )}`
     );
   }

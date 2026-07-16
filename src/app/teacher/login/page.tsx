@@ -50,13 +50,21 @@ export default async function TeacherLoginPage({
             </div>
           )}
           <div>
-            <label className="text-sm font-medium text-slate-600">이메일</label>
+            <label className="text-sm font-medium text-slate-600">
+              이메일{isSignup && " (Slack 계정 이메일)"}
+            </label>
             <input
               name="email"
               type="email"
               required
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
             />
+            {isSignup && (
+              <p className="mt-1 text-xs text-slate-400">
+                로그인 아이디이자 알림 수신용이에요. 학생 가입 신청 시 이 Slack
+                계정으로 DM을 받아요. (Slack 워크스페이스 멤버 이메일)
+              </p>
+            )}
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">비밀번호</label>

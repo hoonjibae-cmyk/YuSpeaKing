@@ -29,6 +29,28 @@ export default async function StudentHome() {
     .eq("student_id", session.studentId);
   const subMap = new Map((subs ?? []).map((s) => [s.assignment_id, s.status]));
 
+  // 반 전체 제출 인원(과제별) + 반 학생 수
+  const visibleIds = assignments.map((a) => a.id);
+  const submitCountByAssignment = new Map<string, number>();
+  if (visibleIds.length) {
+    const { data: allSubs } = await admin
+      .from("submissions")
+      .select("assignment_id")
+      .in("assignment_id", visibleIds);
+    for (const s of (allSubs ?? []) as { assignment_id: string }[]) {
+      submitCountByAssignment.set(
+        s.assignment_id,
+        (submitCountByAssignment.get(s.assignment_id) ?? 0) + 1
+      );
+    }
+  }
+  const { count: classStudentCount } = await admin
+    .from("students")
+    .select("id", { count: "exact", head: true })
+    .eq("class_id", session.classId)
+    .eq("status", "approved");
+  const totalStudents = classStudentCount ?? 0;
+
   // ---- 게임화: 성취 배지 & 연속 제출 스트릭 ----
   const submittedCount = subs?.length ?? 0;
   const bestScore = (subs ?? []).reduce(
@@ -131,11 +153,13 @@ export default async function StudentHome() {
             >
               <div>
                 <div className="font-semibold">{a.title}</div>
-                {a.due_date && (
-                  <div className="mt-1 text-xs text-slate-400">
-                    마감 {a.due_date}
-                  </div>
-                )}
+                <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                  {a.due_date && <span>마감 {a.due_date}</span>}
+                  <span>
+                    👥 {submitCountByAssignment.get(a.id) ?? 0}
+                    {totalStudents > 0 ? `/${totalStudents}` : ""}명 제출
+                  </span>
+                </div>
               </div>
               {done ? (
                 <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">

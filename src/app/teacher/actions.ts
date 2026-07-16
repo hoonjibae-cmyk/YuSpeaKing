@@ -76,6 +76,16 @@ export async function stopImpersonating() {
   redirect("/admin");
 }
 
+// ---------- 알림 설정 ----------
+
+// 선생님 Slack 알림 수신 이메일 저장(빈 값이면 로그인 이메일로 폴백)
+export async function updateSlackEmail(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const slackEmail = String(formData.get("slack_email") || "").trim() || null;
+  await db.from("teachers").update({ slack_email: slackEmail }).eq("id", effectiveId);
+  revalidatePath("/teacher");
+}
+
 // ---------- 반 ----------
 
 function generateClassCode(): string {

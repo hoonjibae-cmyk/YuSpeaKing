@@ -8,7 +8,7 @@ import {
   hashPassword,
   verifyPassword,
 } from "@/lib/student-session";
-import { notifySlack } from "@/lib/slack";
+import { notifyTeacher } from "@/lib/slack";
 
 const USERNAME_RE = /^[a-zA-Z0-9._]{4,20}$/;
 
@@ -44,10 +44,10 @@ export async function studentSignup(formData: FormData) {
 
   const admin = createAdminClient();
 
-  // 수강반 확인
+  // 수강반 + 담당 선생님 확인
   const { data: klass } = await admin
     .from("classes")
-    .select("id, name, teacher_id")
+    .select("id, name, teacher_id, teachers(email, slack_email)")
     .eq("id", classId)
     .single();
   if (!klass) {
@@ -72,8 +72,14 @@ export async function studentSignup(formData: FormData) {
     redirect(`${back}?error=${encodeURIComponent(msg)}`);
   }
 
-  // 선생님에게 Slack 알림 (best-effort)
-  await notifySlack(
+  // 담당 선생님에게 Slack DM (best-effort)
+  const t = Array.isArray(klass.teachers) ? klass.teachers[0] : klass.teachers;
+  const teacherEmail =
+    (t as { email?: string; slack_email?: string } | null)?.slack_email ||
+    (t as { email?: string } | null)?.email ||
+    null;
+  await notifyTeacher(
+    teacherEmail,
     `🎓 유스피킹 새 가입 신청\n` +
       `• 이름: ${name} (${school} ${grade})\n` +
       `• 수강반: ${klass.name}\n` +

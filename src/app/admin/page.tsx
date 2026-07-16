@@ -3,7 +3,12 @@ import { headers } from "next/headers";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
-import { impersonateTeacher, approveTeacher, rejectTeacher } from "./actions";
+import {
+  impersonateTeacher,
+  approveTeacher,
+  rejectTeacher,
+  setTeacherRole,
+} from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
@@ -11,7 +16,7 @@ import { CrownMark } from "@/components/Logo";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
-  await requireAdmin();
+  const meUser = await requireAdmin();
   const admin = createAdminClient();
 
   const [teachersRes, classesRes, studentsRes, assignmentsRes, submissionsRes] =
@@ -311,22 +316,42 @@ export default async function AdminDashboard() {
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <form action={impersonateTeacher}>
-                    <input type="hidden" name="teacherId" value={r.id} />
-                    <button
-                      type="submit"
-                      className="text-left font-medium text-brand hover:underline"
-                      title="이 선생님 화면으로 들어가기"
-                    >
-                      {r.name}
-                    </button>
-                    {r.isAdmin && (
-                      <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand">
-                        운영자
-                      </span>
-                    )}
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <form action={impersonateTeacher}>
+                        <input type="hidden" name="teacherId" value={r.id} />
+                        <button
+                          type="submit"
+                          className="text-left font-medium text-brand hover:underline"
+                          title="이 선생님 화면으로 들어가기"
+                        >
+                          {r.name}
+                        </button>
+                      </form>
+                      {r.isAdmin && (
+                        <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand">
+                          운영자
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-400">{r.email}</div>
-                  </form>
+                    {r.id !== meUser.id && (
+                      <form action={setTeacherRole}>
+                        <input type="hidden" name="teacherId" value={r.id} />
+                        <input
+                          type="hidden"
+                          name="role"
+                          value={r.isAdmin ? "teacher" : "admin"}
+                        />
+                        <button
+                          type="submit"
+                          className="text-xs text-slate-400 hover:text-brand"
+                        >
+                          {r.isAdmin ? "운영자 해제" : "운영자로 지정"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-3 text-slate-600">
                   {r.classCount}반 · {r.studentCount}명

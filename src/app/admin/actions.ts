@@ -34,3 +34,19 @@ export async function rejectTeacher(formData: FormData) {
   await admin.from("teachers").update({ status: "rejected" }).eq("id", teacherId);
   revalidatePath("/admin");
 }
+
+// 선생님 운영자 지정 / 해제 (role 변경). 자기 자신은 변경 불가.
+export async function setTeacherRole(formData: FormData) {
+  const me = await requireAdmin();
+  const teacherId = String(formData.get("teacherId") || "");
+  const role = String(formData.get("role") || "");
+  if (!teacherId || (role !== "admin" && role !== "teacher")) redirect("/admin");
+  if (teacherId === me.id) redirect("/admin"); // 실수로 자기 권한 해제 방지
+
+  const admin = createAdminClient();
+  // 운영자로 지정 시 승인 상태도 함께 보장
+  const patch =
+    role === "admin" ? { role, status: "approved" } : { role };
+  await admin.from("teachers").update(patch).eq("id", teacherId);
+  revalidatePath("/admin");
+}

@@ -3,7 +3,9 @@ import { createAdminClient } from "./supabase/admin";
 
 // 요율(근사치) — 실제 청구는 각 콘솔 현재가 기준. 필요 시 여기서 조정.
 const RATES = {
-  ttsPerChar: 0.03 / 1000, // OpenAI tts-1-hd $0.030 / 1K chars
+  // gpt-4o-mini-tts (~$0.015/분): 입력 글자당으로 환산한 근사치.
+  // 로깅은 입력 글자수만 기록하므로 오디오 출력비 + 정상/느린 2종 생성을 접어 넣은 값.
+  ttsPerChar: 0.02 / 1000,
   azurePerSecond: 1 / 3600, // Azure STT 표준 ~$1 / hour
   claudeInputPerTok: 2 / 1_000_000, // Sonnet 5 인트로 $2 / 1M
   claudeOutputPerTok: 10 / 1_000_000, // Sonnet 5 인트로 $10 / 1M

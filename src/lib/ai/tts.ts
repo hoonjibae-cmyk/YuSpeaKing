@@ -11,11 +11,28 @@ const INSTRUCTIONS: Record<TtsMode, string> = {
     "Read the passage clearly and naturally at a normal, gentle pace with natural, human intonation. " +
     "Sound encouraging and lively — never robotic or monotone.",
   slow:
-    "You are a warm, friendly native English teacher for young beginner English learners. " +
-    "Read the passage slowly and very clearly, carefully enunciating each word so a beginner can follow along and repeat. " +
-    "Keep natural, human intonation and rhythm — do NOT sound robotic, stretched, or slurred. " +
-    "Add a short, natural pause between sentences.",
+    "You are a pronunciation model for a young beginner English learner (a Korean 6th grader). " +
+    "Read VERY slowly and deliberately, ONE WORD AT A TIME, with a clear, full pause between every single word. " +
+    "Enunciate each word crisply and distinctly, slightly exaggerating each sound so the child can focus on and imitate the exact pronunciation of every word. " +
+    "This is for careful word-by-word listening practice, so prioritize clarity and slowness over natural flow — but keep a warm, human voice, never robotic or stretched. " +
+    "Pause a bit longer at the end of each line.",
 };
+
+// 느린(단어별) 버전 입력: 각 단어 사이에 멈춤(…)을 넣어 또박또박 읽게 유도.
+// 정상 버전은 원문 그대로 자연스럽게 읽는다.
+function toDeliberateScript(text: string): string {
+  return text
+    .split(/\n+/)
+    .map((line) =>
+      line
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .join(" … ")
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 // OpenAI TTS 로 지문을 원어민 발음 음성(mp3)으로 합성.
 // 기본 모델은 gpt-4o-mini-tts (지시문으로 자연스러운 속도/톤 제어).
@@ -32,10 +49,13 @@ export async function synthesizeSpeech(
   const voice = normalizeVoice(voiceChoice || process.env.OPENAI_TTS_VOICE);
   const isGpt4o = model.startsWith("gpt-4o");
 
+  // 느린 버전은 단어 사이 멈춤을 넣어 또박또박(단어별) 읽게 한다.
+  const input = mode === "slow" ? toDeliberateScript(text) : text;
+
   const body: Record<string, unknown> = {
     model,
     voice,
-    input: text,
+    input,
     response_format: "mp3",
   };
   if (isGpt4o) {
@@ -43,7 +63,7 @@ export async function synthesizeSpeech(
     body.instructions = INSTRUCTIONS[mode];
   } else if (mode === "slow") {
     // 구형 tts 모델 폴백: 속도 파라미터 사용
-    body.speed = 0.8;
+    body.speed = 0.7;
   }
 
   const res = await fetch("https://api.openai.com/v1/audio/speech", {

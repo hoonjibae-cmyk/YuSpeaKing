@@ -59,7 +59,7 @@ export default async function StudentAssignmentPage({
             {assignment.sample_audio_slow_url && (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <div className="mb-1 text-xs font-medium text-brand">
-                  🐢 천천히 듣기 (처음엔 이걸로 연습해요)
+                  🐢 또박또박 듣기 (단어 하나하나 발음에 집중해요)
                 </div>
                 <audio
                   src={assignment.sample_audio_slow_url}

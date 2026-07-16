@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   setStudentSession,
@@ -95,13 +96,17 @@ export async function studentSignup(formData: FormData) {
     (t as { email?: string; slack_email?: string } | null)?.slack_email ||
     (t as { email?: string } | null)?.email ||
     null;
+  const host = headers().get("host");
+  const approveUrl = host
+    ? `https://${host}/teacher/classes/${classId}`
+    : `/teacher/classes/${classId}`;
   await notifyTeacher(
     teacherEmail,
-    `🎓 유스피킹 새 가입 신청\n` +
+    `🎓 유스피킹앱 신규 학생 가입 신청\n` +
       `• 이름: ${name} (${school} ${grade})\n` +
       `• 수강반: ${klass.name}\n` +
       `• 아이디: ${username}\n` +
-      `→ 선생님 페이지 > 반 상세에서 승인해 주세요.`
+      `👉 승인하러 가기: ${approveUrl}`
   );
 
   redirect(`/student?signup=done`);

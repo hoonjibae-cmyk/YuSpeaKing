@@ -15,9 +15,50 @@ import { CrownMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminDashboard() {
+// 오프셋 주(0=이번 주)의 [시작, 끝) 구간을 KST 월요일 기준으로 계산
+function kstWeekWindow(offset: number): {
+  startUtc: string;
+  endUtc: string;
+  label: string;
+} {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const dow = kst.getUTCDay(); // 0=일..6=토 (KST 벽시계)
+  const sinceMon = (dow + 6) % 7;
+  const mondayKstMidnight = Date.UTC(
+    kst.getUTCFullYear(),
+    kst.getUTCMonth(),
+    kst.getUTCDate()
+  ) - sinceMon * 86400000;
+  const startKst = mondayKstMidnight - offset * 7 * 86400000;
+  const endKst = startKst + 7 * 86400000;
+  // KST 벽시계 자정 → 실제 UTC 순간(−9h)
+  const startUtc = new Date(startKst - 9 * 3600 * 1000).toISOString();
+  const endUtc = new Date(endKst - 9 * 3600 * 1000).toISOString();
+  const label =
+    offset === 0
+      ? "이번 주"
+      : offset === 1
+        ? "지난주"
+        : offset === 2
+          ? "지지난주"
+          : `${offset}주 전`;
+  return { startUtc, endUtc, label };
+}
+
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: { week?: string };
+}) {
   const meUser = await requireAdmin();
   const admin = createAdminClient();
+
+  const weekOffset = Math.max(
+    0,
+    Math.min(8, parseInt(searchParams.week || "0", 10) || 0)
+  );
+  const { startUtc, endUtc, label: weekLabel } = kstWeekWindow(weekOffset);
 
   const [teachersRes, classesRes, studentsRes, assignmentsRes, submissionsRes] =
     await Promise.all([
@@ -72,9 +113,7 @@ export default async function AdminDashboard() {
     subsByAssignment.set(s.assignment_id, arr);
   });
 
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  // 교사별 집계 (운영자 겸 교사도 포함)
+  // 교사별 집계 — 선택한 주(週) 기준 (운영자 겸 교사도 포함)
   const rows = teachers
     .map((t) => {
       const myClasses = classes.filter((c) => c.teacher_id === t.id).map((c) => c.id);
@@ -89,13 +128,23 @@ export default async function AdminDashboard() {
         (max, a) => (!max || a.created_at > max ? a.created_at : max),
         null
       );
-      const thisWeek = myAssignments.filter((a) => a.created_at >= weekAgo).length;
 
-      // 제출률 & 평균점수
+      // 선택 주에 생성한 과제
+      const weekAssignments = myAssignments.filter(
+        (a) => a.created_at >= startUtc && a.created_at < endUtc
+      );
+      const weekUploads = weekAssignments.length;
+      // 목표: 반 수 × 주 2회
+      const target = myClasses.length * 2;
+      const creationRate = target
+        ? Math.round((weekUploads / target) * 100)
+        : 0;
+
+      // 선택 주에 생성한 과제 기준 제출률 & 평균점수
       let expected = 0;
       let actual = 0;
       const scores: number[] = [];
-      myAssignments.forEach((a) => {
+      weekAssignments.forEach((a) => {
         const enrolled = studentsPerClass.get(a.class_id) ?? 0;
         expected += enrolled;
         const subs = subsByAssignment.get(a.id) ?? [];
@@ -117,8 +166,10 @@ export default async function AdminDashboard() {
         isAdmin: t.role === "admin",
         classCount: myClasses.length,
         studentCount,
-        assignmentCount: myAssignments.length,
-        thisWeek,
+        assignmentCount: myAssignments.length, // 누적
+        weekUploads,
+        target,
+        creationRate,
         lastUpload,
         rate,
         avg,
@@ -240,16 +291,47 @@ export default async function AdminDashboard() {
         </p>
       </section>
 
+      {/* 주 선택 */}
+      <div className="mt-6 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-sm font-medium text-slate-500">기간:</span>
+        {Array.from({ length: 6 }, (_, i) => i).map((off) => {
+          const on = off === weekOffset;
+          const lbl =
+            off === 0
+              ? "이번 주"
+              : off === 1
+                ? "지난주"
+                : off === 2
+                  ? "지지난주"
+                  : `${off}주 전`;
+          return (
+            <Link
+              key={off}
+              href={`/admin?week=${off}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                on
+                  ? "bg-brand text-white"
+                  : "border border-slate-300 text-slate-500 hover:bg-slate-100"
+              }`}
+            >
+              {lbl}
+            </Link>
+          );
+        })}
+      </div>
+
       {/* 선생님별 운영 현황 (그래프) */}
       {rows.length > 0 && (
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="font-semibold">선생님별 운영 현황 (한눈에)</h2>
+        <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="font-semibold">
+            선생님별 운영 현황 · <span className="text-brand">{weekLabel}</span>
+          </h2>
           <p className="mt-1 text-xs text-slate-400">
-            제출률·평균점수·이번 주 과제 업로드를 막대로 비교해요.
+            과제 생성률(반 수 × 주 2회 기준)·제출률·평균점수를 막대로 비교해요.
           </p>
           <div className="mt-4 space-y-4">
             {[...rows]
-              .sort((a, b) => b.rate - a.rate)
+              .sort((a, b) => b.creationRate - a.creationRate)
               .map((r) => (
                 <div key={r.id}>
                   <div className="flex items-baseline justify-between">
@@ -262,17 +344,16 @@ export default async function AdminDashboard() {
                       )}
                     </span>
                     <span className="text-xs text-slate-400">
-                      {r.classCount}반 · {r.studentCount}명 · 이번 주{" "}
-                      <b
-                        className={
-                          r.thisWeek < 2 ? "text-amber-600" : "text-green-600"
-                        }
-                      >
-                        {r.thisWeek}회
-                      </b>
+                      {r.classCount}반 · {r.studentCount}명
                     </span>
                   </div>
                   <div className="mt-1.5 space-y-1">
+                    <Bar
+                      label="과제생성"
+                      value={r.creationRate}
+                      display={`${r.weekUploads}/${r.target} (${r.creationRate}%)`}
+                      tone={r.creationRate < 100 ? "amber" : "brand"}
+                    />
                     <Bar
                       label="제출률"
                       value={r.rate}
@@ -299,10 +380,10 @@ export default async function AdminDashboard() {
               <th className="px-4 py-3">선생님</th>
               <th className="px-3 py-3">반/학생</th>
               <th className="px-3 py-3">과제(누적)</th>
-              <th className="px-3 py-3">이번 주 업로드</th>
+              <th className="px-3 py-3">과제생성 ({weekLabel})</th>
               <th className="px-3 py-3">최근 업로드</th>
-              <th className="px-3 py-3">제출률</th>
-              <th className="px-3 py-3">평균점수</th>
+              <th className="px-3 py-3">제출률 ({weekLabel})</th>
+              <th className="px-3 py-3">평균 ({weekLabel})</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -360,14 +441,17 @@ export default async function AdminDashboard() {
                 <td className="px-3 py-3">
                   <span
                     className={
-                      r.thisWeek < 2
+                      r.creationRate < 100
                         ? "font-medium text-amber-600"
                         : "font-medium text-green-600"
                     }
                   >
-                    {r.thisWeek}개
+                    {r.weekUploads}개
                   </span>
-                  <span className="text-xs text-slate-400"> / 주2회</span>
+                  <span className="text-xs text-slate-400">
+                    {" "}
+                    / {r.target}개 ({r.creationRate}%)
+                  </span>
                 </td>
                 <td className="px-3 py-3 text-slate-500">
                   {r.lastUpload ? r.lastUpload.slice(0, 10).replace(/-/g, ".") : "-"}
@@ -391,8 +475,9 @@ export default async function AdminDashboard() {
       </div>
 
       <p className="mt-4 text-xs text-slate-400">
-        · 이번 주 업로드가 2회 미만이면 주황색으로 표시됩니다 (주 2회 기준).
-        · 제출률 60% 미만은 주황색.
+        · 과제 생성률 = 그 주 생성 과제 ÷ (등록 반 수 × 주 2회). 100% 미만은
+        주황색. · 제출률·평균은 그 주 생성 과제 기준이며, 제출률 60% 미만은
+        주황색.
       </p>
     </main>
   );

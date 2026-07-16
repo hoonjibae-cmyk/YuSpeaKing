@@ -3,6 +3,7 @@
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
@@ -103,12 +104,13 @@ export async function signUp(formData: FormData) {
       .from("teachers")
       .select("email, slack_email")
       .eq("role", "admin");
+    const host = headers().get("host");
+    const approveUrl = host ? `https://${host}/admin` : "/admin";
     const text =
-      `🧑‍🏫 유스피킹 선생님 가입 신청\n` +
+      `🧑‍🏫 유스피킹앱 선생님 가입 신청\n` +
       `• 이름: ${name}\n` +
       `• 이메일: ${email}\n` +
-      `• Slack: ${slackEmail}\n` +
-      `→ 운영자 대시보드에서 승인해 주세요.`;
+      `👉 승인하러 가기: ${approveUrl}`;
     for (const a of (admins ?? []) as {
       email?: string;
       slack_email?: string;

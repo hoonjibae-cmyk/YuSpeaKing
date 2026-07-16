@@ -17,8 +17,8 @@ import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 async function generateAndStoreSamples(assignmentId: string, passageText: string) {
   const admin = createAdminClient();
   const [normal, slow] = await Promise.all([
-    synthesizeSpeech(passageText, 1.0),
-    synthesizeSpeech(passageText, 0.75),
+    synthesizeSpeech(passageText, "normal"),
+    synthesizeSpeech(passageText, "slow"),
   ]);
   const normalPath = `${assignmentId}.mp3`;
   const slowPath = `${assignmentId}_slow.mp3`;
@@ -48,6 +48,19 @@ export async function signIn(formData: FormData) {
   const supabase = createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect(`/teacher/login?error=${encodeURIComponent(error.message)}`);
+
+  // 운영자는 로그인 즉시 운영자 대시보드로
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const { data: me } = await supabase
+      .from("teachers")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (me?.role === "admin") redirect("/admin");
+  }
   redirect("/teacher");
 }
 

@@ -207,6 +207,58 @@ export default async function AdminDashboard() {
         </p>
       </section>
 
+      {/* 선생님별 운영 현황 (그래프) */}
+      {rows.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="font-semibold">선생님별 운영 현황 (한눈에)</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            제출률·평균점수·이번 주 과제 업로드를 막대로 비교해요.
+          </p>
+          <div className="mt-4 space-y-4">
+            {[...rows]
+              .sort((a, b) => b.rate - a.rate)
+              .map((r) => (
+                <div key={r.id}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-medium">
+                      {r.name}
+                      {r.isAdmin && (
+                        <span className="ml-1.5 rounded-full bg-brand-light px-1.5 py-0.5 text-[10px] text-brand">
+                          운영자
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {r.classCount}반 · {r.studentCount}명 · 이번 주{" "}
+                      <b
+                        className={
+                          r.thisWeek < 2 ? "text-amber-600" : "text-green-600"
+                        }
+                      >
+                        {r.thisWeek}회
+                      </b>
+                    </span>
+                  </div>
+                  <div className="mt-1.5 space-y-1">
+                    <Bar
+                      label="제출률"
+                      value={r.rate}
+                      display={`${r.rate}%`}
+                      tone={r.rate < 60 ? "amber" : "brand"}
+                    />
+                    <Bar
+                      label="평균"
+                      value={r.avg ?? 0}
+                      display={r.avg != null ? `${r.avg}점` : "-"}
+                      tone="green"
+                    />
+                  </div>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
@@ -290,5 +342,39 @@ export default async function AdminDashboard() {
         · 제출률 60% 미만은 주황색.
       </p>
     </main>
+  );
+}
+
+function Bar({
+  label,
+  value,
+  display,
+  tone,
+}: {
+  label: string;
+  value: number;
+  display: string;
+  tone: "brand" | "green" | "amber";
+}) {
+  const pct = Math.max(0, Math.min(100, value));
+  const color =
+    tone === "amber"
+      ? "bg-amber-400"
+      : tone === "green"
+        ? "bg-green-500"
+        : "bg-brand";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-10 shrink-0 text-xs text-slate-400">{label}</span>
+      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full rounded-full ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="w-12 shrink-0 text-right text-xs font-medium tabular-nums text-slate-600">
+        {display}
+      </span>
+    </div>
   );
 }

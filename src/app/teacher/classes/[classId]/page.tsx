@@ -46,7 +46,7 @@ export default async function ClassDetailPage({
     db
       .from("assignments")
       .select(
-        "id, title, passage_text, sample_audio_url, due_date, max_attempts, created_at, submissions(overall_score, status)"
+        "id, title, passage_text, sample_audio_url, sample_audio_slow_url, due_date, max_attempts, created_at, submissions(overall_score, status)"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
@@ -362,6 +362,36 @@ export default async function ClassDetailPage({
                       {avg != null && ` · 평균 ${avg}점`}
                     </span>
                   </div>
+                  {/* 샘플음성 미리듣기 */}
+                  {a.sample_audio_url && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 shrink-0 text-xs text-slate-500">
+                          🎧 원어민 속도
+                        </span>
+                        <audio
+                          src={a.sample_audio_url as string}
+                          controls
+                          preload="none"
+                          className="h-8 w-full"
+                        />
+                      </div>
+                      {a.sample_audio_slow_url && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-24 shrink-0 text-xs text-slate-500">
+                            🐢 천천히
+                          </span>
+                          <audio
+                            src={a.sample_audio_slow_url as string}
+                            controls
+                            preload="none"
+                            className="h-8 w-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-2 flex items-center gap-3 text-xs">
                     {a.sample_audio_url ? (
                       <span className="text-green-600">✓ 샘플음성 준비됨</span>

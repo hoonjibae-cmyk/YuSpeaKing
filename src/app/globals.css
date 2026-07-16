@@ -15,3 +15,20 @@ body {
   color: var(--foreground);
   background: var(--background);
 }
+
+/* 인쇄: 화면 전용 요소 숨김 + A4 여백 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: #fff;
+  }
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+}

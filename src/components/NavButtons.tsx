@@ -12,7 +12,7 @@ export default function NavButtons() {
     "flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-600 shadow-sm backdrop-blur transition hover:bg-white hover:text-brand active:scale-95";
 
   return (
-    <div className="fixed bottom-3 left-3 z-40 flex gap-1.5 pb-[env(safe-area-inset-bottom)]">
+    <div className="no-print fixed bottom-3 left-3 z-40 flex gap-1.5 pb-[env(safe-area-inset-bottom)]">
       <button
         type="button"
         onClick={() => router.back()}

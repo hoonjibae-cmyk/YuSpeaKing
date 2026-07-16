@@ -57,12 +57,22 @@ export default async function StudentMonthlyPage({
       >
         ← 월말 리포트 목록
       </Link>
-      <h1 className="mt-3 text-2xl font-bold">
-        {student.number}번 {student.name}
-      </h1>
-      <p className="text-sm text-slate-500">
-        {klass.name} · {month} 월말 리포트
-      </p>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {student.number}번 {student.name}
+          </h1>
+          <p className="text-sm text-slate-500">
+            {klass.name} · {month} 월말 리포트
+          </p>
+        </div>
+        <Link
+          href={`/teacher/students/${studentId}/monthly/print?month=${month}`}
+          className="shrink-0 rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+        >
+          🖨 인쇄용 보기
+        </Link>
+      </div>
 
       {searchParams.error && (
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">

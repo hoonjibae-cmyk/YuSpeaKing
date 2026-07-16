@@ -74,10 +74,10 @@ export interface Submission {
   updated_at: string;
 }
 
-// 학생 세션 (반코드 로그인 후 서명 쿠키에 담기는 페이로드)
+// 학생 세션 (로그인 후 서명 쿠키에 담기는 페이로드)
 export interface StudentSession {
   studentId: string;
   classId: string;
   name: string;
-  number: number;
+  number: number | null;
 }

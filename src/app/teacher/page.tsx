@@ -21,6 +21,20 @@ export default async function TeacherDashboard({
     .eq("teacher_id", effectiveId)
     .order("created_at", { ascending: false });
 
+  // 반별 가입 승인 대기 수
+  const classIds = (classes ?? []).map((c) => c.id);
+  const pendingByClass = new Map<string, number>();
+  if (classIds.length) {
+    const { data: pend } = await db
+      .from("students")
+      .select("class_id")
+      .eq("status", "pending")
+      .in("class_id", classIds);
+    for (const r of (pend ?? []) as { class_id: string }[]) {
+      pendingByClass.set(r.class_id, (pendingByClass.get(r.class_id) ?? 0) + 1);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
@@ -94,7 +108,14 @@ export default async function TeacherDashboard({
               className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand hover:shadow-sm"
             >
               <div>
-                <div className="font-semibold">{c.name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{c.name}</span>
+                  {(pendingByClass.get(c.id) ?? 0) > 0 && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      가입 신청 {pendingByClass.get(c.id)}
+                    </span>
+                  )}
+                </div>
                 <div className="mt-1 text-sm text-slate-500">
                   학생 {studentCount}명 · 과제 {assignmentCount}개
                 </div>

@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { getTeacherContext } from "@/lib/teacher-context";
 import {
   addStudent,
   bulkAddStudents,
   deleteStudent,
-  resetStudentPin,
+  approveStudent,
+  rejectStudent,
   regenerateSample,
   deleteAssignment,
   updateAssignment,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
+import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
 
@@ -36,9 +39,9 @@ export default async function ClassDetailPage({
   const [{ data: students }, { data: assignments }] = await Promise.all([
     db
       .from("students")
-      .select("id, name, number")
+      .select("id, name, number, school, grade, username, status, created_at")
       .eq("class_id", classId)
-      .order("number"),
+      .order("created_at", { ascending: true }),
     db
       .from("assignments")
       .select(
@@ -47,6 +50,24 @@ export default async function ClassDetailPage({
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
   ]);
+
+  type Row = {
+    id: string;
+    name: string;
+    number: number | null;
+    school: string | null;
+    grade: string | null;
+    username: string | null;
+    status: string | null;
+  };
+  const roster = (students ?? []) as Row[];
+  const pending = roster.filter((s) => s.status === "pending");
+  const approved = roster
+    .filter((s) => s.status !== "pending" && s.status !== "rejected")
+    .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
+
+  const host = headers().get("host");
+  const signupUrl = host ? `https://${host}/student/signup` : "/student/signup";
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -82,44 +103,134 @@ export default async function ClassDetailPage({
       <div className="mt-8 grid gap-8 md:grid-cols-2">
         {/* 학생 명단 */}
         <section>
-          <h2 className="font-semibold">학생 명단 ({students?.length ?? 0})</h2>
-          <form
-            action={addStudent}
-            className="mt-3 flex gap-2 rounded-xl border border-slate-200 bg-white p-3"
-          >
-            <input type="hidden" name="classId" value={classId} />
-            <input
-              name="number"
-              type="number"
-              placeholder="번호"
-              required
-              className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
-            />
-            <input
-              name="name"
-              placeholder="이름"
-              required
-              className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
-            />
-            <SubmitButton
-              pendingText="추가 중…"
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-            >
-              추가
-            </SubmitButton>
-          </form>
+          <h2 className="font-semibold">학생 명단 ({approved.length})</h2>
 
-          {/* 여러 명 한 번에 (엑셀/CSV) */}
+          {/* 가입 신청 링크 */}
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div className="text-xs font-medium text-slate-500">
+              학생 가입 신청 링크 (학생들에게 공유)
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="signup-url"
+                readOnly
+                value={signupUrl}
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+              />
+              <CopyButton
+                targetId="signup-url"
+                className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+              />
+            </div>
+          </div>
+
+          {/* 승인 대기 */}
+          {pending.length > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-sm font-semibold text-amber-700">
+                가입 신청 대기 {pending.length}건
+              </div>
+              <ul className="mt-2 space-y-2">
+                {pending.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{s.name}</div>
+                      <div className="truncate text-xs text-slate-400">
+                        {s.school} {s.grade} · 아이디 {s.username}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <form action={approveStudent}>
+                        <input type="hidden" name="classId" value={classId} />
+                        <input type="hidden" name="studentId" value={s.id} />
+                        <SubmitButton
+                          pendingText="승인 중…"
+                          className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
+                        >
+                          승인
+                        </SubmitButton>
+                      </form>
+                      <form action={rejectStudent}>
+                        <input type="hidden" name="classId" value={classId} />
+                        <input type="hidden" name="studentId" value={s.id} />
+                        <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100">
+                          거절
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 승인된 학생 목록 */}
+          <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+            {approved.length === 0 && (
+              <li className="p-4 text-center text-sm text-slate-400">
+                아직 승인된 학생이 없어요
+              </li>
+            )}
+            {approved.map((s) => (
+              <li key={s.id} className="flex items-center justify-between px-4 py-2.5">
+                <span className="min-w-0">
+                  <span className="inline-block w-8 text-slate-400">
+                    {s.number ?? "-"}
+                  </span>
+                  {s.name}
+                  {s.username && (
+                    <span className="ml-2 text-xs text-slate-400">
+                      @{s.username}
+                    </span>
+                  )}
+                </span>
+                <form action={deleteStudent}>
+                  <input type="hidden" name="classId" value={classId} />
+                  <input type="hidden" name="studentId" value={s.id} />
+                  <button className="text-xs text-slate-400 hover:text-red-500">
+                    삭제
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+
+          {/* 선생님이 직접 명단만 추가 (로그인 계정 없이) */}
           <details className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
-            <summary className="cursor-pointer text-sm font-medium text-brand">
-              📋 여러 명 한 번에 등록 (엑셀 붙여넣기)
+            <summary className="cursor-pointer text-xs font-medium text-slate-500">
+              선생님이 직접 명단 추가 (로그인 계정 없이 번호·이름만)
             </summary>
-            <form action={bulkAddStudents} className="mt-3 space-y-2">
+            <form action={addStudent} className="mt-3 flex gap-2">
+              <input type="hidden" name="classId" value={classId} />
+              <input
+                name="number"
+                type="number"
+                placeholder="번호"
+                required
+                className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
+              />
+              <input
+                name="name"
+                placeholder="이름"
+                required
+                className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
+              />
+              <SubmitButton
+                pendingText="추가 중…"
+                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+              >
+                추가
+              </SubmitButton>
+            </form>
+            <form action={bulkAddStudents} className="mt-2 space-y-2">
               <input type="hidden" name="classId" value={classId} />
               <textarea
                 name="roster"
-                rows={6}
-                placeholder={"엑셀에서 번호·이름 두 열을 복사해 붙여넣거나, 한 줄에 하나씩:\n1, 민수\n2, 지영\n3, 하준"}
+                rows={4}
+                placeholder={"엑셀에서 번호·이름 두 열을 복사해 붙여넣거나, 한 줄에 하나씩:\n1, 민수\n2, 지영"}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
               />
               <div className="flex items-center justify-between">
@@ -135,38 +246,6 @@ export default async function ClassDetailPage({
               </div>
             </form>
           </details>
-
-          <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-            {(!students || students.length === 0) && (
-              <li className="p-4 text-center text-sm text-slate-400">
-                학생을 추가하세요
-              </li>
-            )}
-            {students?.map((s) => (
-              <li key={s.id} className="flex items-center justify-between px-4 py-2.5">
-                <span>
-                  <span className="inline-block w-8 text-slate-400">{s.number}</span>
-                  {s.name}
-                </span>
-                <span className="flex items-center gap-3">
-                  <form action={resetStudentPin}>
-                    <input type="hidden" name="classId" value={classId} />
-                    <input type="hidden" name="studentId" value={s.id} />
-                    <button className="text-xs text-slate-400 hover:text-brand">
-                      PIN 초기화
-                    </button>
-                  </form>
-                  <form action={deleteStudent}>
-                    <input type="hidden" name="classId" value={classId} />
-                    <input type="hidden" name="studentId" value={s.id} />
-                    <button className="text-xs text-slate-400 hover:text-red-500">
-                      삭제
-                    </button>
-                  </form>
-                </span>
-              </li>
-            ))}
-          </ul>
         </section>
 
         {/* 과제(지문) */}

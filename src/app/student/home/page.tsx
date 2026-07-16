@@ -58,7 +58,8 @@ export default async function StudentHome() {
           <div>
             <h1 className="text-xl font-bold text-brand">오늘의 스피킹</h1>
             <p className="text-sm text-slate-500">
-              {session.number}번 {session.name}
+              {session.number != null ? `${session.number}번 ` : ""}
+              {session.name}
             </p>
           </div>
         </div>

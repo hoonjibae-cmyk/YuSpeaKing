@@ -8,9 +8,12 @@ import { Logo } from "@/components/Logo";
 export default async function StudentEntryPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  searchParams: { error?: string; signup?: string };
 }) {
   if (await getStudentSession()) redirect("/student/home");
+
+  const inputCls =
+    "w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none";
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-16">
@@ -22,8 +25,14 @@ export default async function StudentEntryPage({
       <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-center text-lg font-semibold">학생 로그인</h1>
         <p className="mt-1 text-center text-sm text-slate-500">
-          반 코드와 본인 이름·번호를 입력해요
+          아이디와 비밀번호를 입력해요
         </p>
+
+        {searchParams.signup === "done" && (
+          <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-center text-sm text-green-700">
+            가입 신청이 접수됐어요! 선생님 승인 후 로그인할 수 있어요 🙂
+          </p>
+        )}
 
         {searchParams.error && (
           <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-600">
@@ -33,39 +42,38 @@ export default async function StudentEntryPage({
 
         <form action={studentLogin} className="mt-6 space-y-3">
           <input
-            name="code"
-            placeholder="반 코드 (예: ABC234)"
+            name="username"
+            placeholder="아이디"
             required
-            autoCapitalize="characters"
-            autoComplete="off"
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-center text-lg font-bold uppercase tracking-widest focus:border-brand focus:outline-none"
+            autoCapitalize="none"
+            autoComplete="username"
+            className={inputCls}
           />
-          <div className="flex gap-2">
-            <input
-              name="number"
-              type="number"
-              placeholder="번호"
-              required
-              className="w-20 shrink-0 rounded-xl border border-slate-300 px-3 py-3 text-center focus:border-brand focus:outline-none"
-            />
-            <input
-              name="name"
-              placeholder="이름"
-              required
-              className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none"
-            />
-          </div>
+          <input
+            name="password"
+            type="password"
+            placeholder="비밀번호"
+            required
+            autoComplete="current-password"
+            className={inputCls}
+          />
           <SubmitButton
             pendingText="확인 중…"
             className="w-full rounded-xl bg-brand py-3 text-lg font-semibold text-white transition hover:bg-brand-dark"
           >
-            입장하기
+            로그인
           </SubmitButton>
         </form>
       </div>
 
-      <p className="mt-4 text-center text-xs text-slate-400">
-        처음이면 입장 후 나만의 PIN을 정할 수 있어요 🔒
+      <p className="mt-4 text-center text-sm text-slate-400">
+        처음이신가요?{" "}
+        <Link
+          href="/student/signup"
+          className="font-medium text-brand hover:underline"
+        >
+          가입 신청하기
+        </Link>
       </p>
     </main>
   );

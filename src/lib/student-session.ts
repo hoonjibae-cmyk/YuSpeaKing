@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac } from "crypto";
+import { createHmac, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { StudentSession } from "./types";
@@ -13,6 +13,29 @@ function secret() {
   const s = process.env.STUDENT_SESSION_SECRET;
   if (!s) throw new Error("STUDENT_SESSION_SECRET 가 설정되지 않았습니다.");
   return new TextEncoder().encode(s);
+}
+
+// ---------- 비밀번호 해시 (scrypt + 랜덤 salt) ----------
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(password, salt, 32);
+  return `scrypt$${salt.toString("hex")}$${hash.toString("hex")}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  try {
+    const salt = Buffer.from(parts[1], "hex");
+    const expected = Buffer.from(parts[2], "hex");
+    const actual = scryptSync(password, salt, expected.length);
+    return (
+      expected.length === actual.length && timingSafeEqual(expected, actual)
+    );
+  } catch {
+    return false;
+  }
 }
 
 // 학생 세션 발급 → httpOnly 쿠키 설정
@@ -42,7 +65,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
       studentId: String(payload.studentId),
       classId: String(payload.classId),
       name: String(payload.name),
-      number: Number(payload.number),
+      number: payload.number == null ? null : Number(payload.number),
     };
   } catch {
     return null;

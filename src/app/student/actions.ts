@@ -5,96 +5,128 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   setStudentSession,
   clearStudentSession,
-  setPendingStudent,
-  getPendingStudent,
-  clearPendingStudent,
-  hashPin,
+  hashPassword,
+  verifyPassword,
 } from "@/lib/student-session";
+import { notifySlack } from "@/lib/slack";
 
-// 1단계: 반코드 + 이름 + 번호 로 명단 매칭 → PIN 단계로
-export async function studentLogin(formData: FormData) {
-  const code = String(formData.get("code") || "")
-    .trim()
-    .toUpperCase();
+const USERNAME_RE = /^[a-zA-Z0-9._]{4,20}$/;
+
+// ---------- 가입 신청 (승인 대기) ----------
+export async function studentSignup(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
-  const number = parseInt(String(formData.get("number") || ""), 10);
+  const school = String(formData.get("school") || "").trim();
+  const grade = String(formData.get("grade") || "").trim();
+  const classId = String(formData.get("classId") || "").trim();
+  const username = String(formData.get("username") || "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") || "");
+  const passwordConfirm = String(formData.get("password_confirm") || "");
 
-  if (!code || !name || Number.isNaN(number)) {
-    redirect("/student?error=반+코드·이름·번호를+모두+입력하세요");
+  const back = "/student/signup";
+  if (!name || !school || !grade || !classId) {
+    redirect(`${back}?error=${encodeURIComponent("모든 항목을 입력해 주세요")}`);
+  }
+  if (!USERNAME_RE.test(username)) {
+    redirect(
+      `${back}?error=${encodeURIComponent(
+        "아이디는 영문·숫자 4~20자로 만들어 주세요"
+      )}`
+    );
+  }
+  if (password.length < 4) {
+    redirect(`${back}?error=${encodeURIComponent("비밀번호는 4자 이상이에요")}`);
+  }
+  if (password !== passwordConfirm) {
+    redirect(`${back}?error=${encodeURIComponent("비밀번호가 서로 달라요")}`);
   }
 
   const admin = createAdminClient();
+
+  // 수강반 확인
   const { data: klass } = await admin
     .from("classes")
-    .select("id")
-    .eq("class_code", code)
+    .select("id, name, teacher_id")
+    .eq("id", classId)
     .single();
-  if (!klass) redirect("/student?error=반+코드를+찾을+수+없어요");
-
-  // 이름 + 번호가 명단과 일치해야 입장 (명단은 노출하지 않음)
-  const { data: student } = await admin
-    .from("students")
-    .select("id, name, number, class_id, pin_hash")
-    .eq("class_id", klass.id)
-    .eq("number", number)
-    .ilike("name", name)
-    .maybeSingle();
-
-  if (!student) {
-    redirect("/student?error=명단에서+찾을+수+없어요.+이름·번호를+확인하거나+선생님께+문의하세요");
+  if (!klass) {
+    redirect(`${back}?error=${encodeURIComponent("수강반을 선택해 주세요")}`);
   }
 
-  await setPendingStudent({
-    studentId: student.id,
-    classId: student.class_id,
-    name: student.name,
-    number: student.number,
-    pinSet: !!student.pin_hash,
+  const { error } = await admin.from("students").insert({
+    class_id: classId,
+    name,
+    school,
+    grade,
+    username,
+    password_hash: hashPassword(password),
+    status: "pending",
   });
-  redirect("/student/pin");
+
+  if (error) {
+    const msg =
+      error.code === "23505"
+        ? "이미 사용 중인 아이디예요"
+        : error.message || "가입 신청에 실패했어요";
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+
+  // 선생님에게 Slack 알림 (best-effort)
+  await notifySlack(
+    `🎓 유스피킹 새 가입 신청\n` +
+      `• 이름: ${name} (${school} ${grade})\n` +
+      `• 수강반: ${klass.name}\n` +
+      `• 아이디: ${username}\n` +
+      `→ 선생님 페이지 > 반 상세에서 승인해 주세요.`
+  );
+
+  redirect(`/student?signup=done`);
 }
 
-// 2단계: PIN 설정(첫 로그인) 또는 PIN 입력 → 세션 발급
-export async function submitPin(formData: FormData) {
-  const pending = await getPendingStudent();
-  if (!pending) redirect("/student?error=시간이+초과되었어요.+다시+로그인해+주세요");
+// ---------- 로그인 (아이디 + 비밀번호) ----------
+export async function studentLogin(formData: FormData) {
+  const username = String(formData.get("username") || "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") || "");
 
-  const pin = String(formData.get("pin") || "").trim();
-  if (!/^\d{4}$/.test(pin)) {
-    redirect("/student/pin?error=PIN은+숫자+4자리예요");
+  if (!username || !password) {
+    redirect("/student?error=" + encodeURIComponent("아이디와 비밀번호를 입력하세요"));
   }
 
   const admin = createAdminClient();
+  const { data: student } = await admin
+    .from("students")
+    .select("id, name, number, class_id, password_hash, status")
+    .eq("username", username)
+    .maybeSingle();
 
-  if (!pending.pinSet) {
-    // 첫 로그인: PIN 설정
-    const confirm = String(formData.get("pin_confirm") || "").trim();
-    if (pin !== confirm) {
-      redirect("/student/pin?error=PIN이+서로+달라요.+다시+입력해+주세요");
-    }
-    await admin
-      .from("students")
-      .update({ pin_hash: hashPin(pending.studentId, pin) })
-      .eq("id", pending.studentId);
-  } else {
-    // 기존 학생: PIN 검증
-    const { data: student } = await admin
-      .from("students")
-      .select("pin_hash")
-      .eq("id", pending.studentId)
-      .single();
-    if (!student || student.pin_hash !== hashPin(pending.studentId, pin)) {
-      redirect("/student/pin?error=PIN이+맞지+않아요");
-    }
+  if (!student || !student.password_hash) {
+    redirect("/student?error=" + encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"));
+  }
+  if (!verifyPassword(password, student.password_hash)) {
+    redirect("/student?error=" + encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"));
+  }
+  if (student.status === "pending") {
+    redirect(
+      "/student?error=" +
+        encodeURIComponent("가입 승인 대기 중이에요. 선생님 승인 후 이용할 수 있어요")
+    );
+  }
+  if (student.status === "rejected") {
+    redirect(
+      "/student?error=" +
+        encodeURIComponent("가입이 반려되었어요. 선생님께 문의해 주세요")
+    );
   }
 
   await setStudentSession({
-    studentId: pending.studentId,
-    classId: pending.classId,
-    name: pending.name,
-    number: pending.number,
+    studentId: student.id,
+    classId: student.class_id,
+    name: student.name,
+    number: student.number ?? null,
   });
-  clearPendingStudent();
   redirect("/student/home");
 }
 

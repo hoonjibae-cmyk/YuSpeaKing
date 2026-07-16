@@ -189,6 +189,49 @@ export async function resetStudentPin(formData: FormData) {
   revalidatePath(`/teacher/classes/${classId}`);
 }
 
+// 가입 신청 승인: status='approved' + 번호 미배정 시 다음 번호 자동 부여
+export async function approveStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  if (!classId || !studentId) redirect(`/teacher/classes/${classId}`);
+
+  const { data: student } = await db
+    .from("students")
+    .select("id, number, class_id")
+    .eq("id", studentId)
+    .single();
+  if (!student) redirect(`/teacher/classes/${classId}`);
+
+  let number = student.number as number | null;
+  if (number == null) {
+    const { data: rows } = await db
+      .from("students")
+      .select("number")
+      .eq("class_id", student.class_id)
+      .not("number", "is", null)
+      .order("number", { ascending: false })
+      .limit(1);
+    const maxNum = rows?.[0]?.number ?? 0;
+    number = Number(maxNum) + 1;
+  }
+
+  await db
+    .from("students")
+    .update({ status: "approved", number })
+    .eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 가입 신청 반려
+export async function rejectStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  await db.from("students").update({ status: "rejected" }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // ---------- 과제 (지문 등록 + TTS 샘플음성) ----------
 
 export async function createAssignment(formData: FormData) {

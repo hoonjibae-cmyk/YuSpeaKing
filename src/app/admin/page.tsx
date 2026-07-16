@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
 import { impersonateTeacher, approveTeacher, rejectTeacher } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
@@ -119,6 +121,11 @@ export default async function AdminDashboard() {
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const host = headers().get("host");
+  const teacherSignupUrl = host
+    ? `https://${host}/teacher/login?mode=signup`
+    : "/teacher/login?mode=signup";
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <header className="flex items-center justify-between">
@@ -137,6 +144,27 @@ export default async function AdminDashboard() {
           </button>
         </form>
       </header>
+
+      {/* 선생님 가입 링크 */}
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold">선생님 가입 링크</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          새 선생님에게 이 링크를 보내세요. 선생님이 가입 신청하면 여기 운영자
+          대시보드에서 승인하고, 신청 시 총괄관리자에게 Slack DM도 전송돼요.
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            id="teacher-signup-url"
+            readOnly
+            value={teacherSignupUrl}
+            className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+          />
+          <CopyButton
+            targetId="teacher-signup-url"
+            className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          />
+        </div>
+      </section>
 
       {/* 선생님 가입 신청 승인 */}
       {pendingTeachers.length > 0 && (

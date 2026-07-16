@@ -3,8 +3,6 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { getTeacherContext } from "@/lib/teacher-context";
 import {
-  addStudent,
-  bulkAddStudents,
   deleteStudent,
   approveStudent,
   rejectStudent,
@@ -98,12 +96,6 @@ export default async function ClassDetailPage({
           >
             📄 월말 리포트
           </Link>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-slate-400">반 코드 (학생 로그인용)</div>
-          <div className="font-mono text-xl font-bold tracking-wider text-brand">
-            {klass.class_code}
-          </div>
         </div>
       </header>
 
@@ -264,54 +256,6 @@ export default async function ClassDetailPage({
             ))}
           </ul>
 
-          {/* 선생님이 직접 명단만 추가 (로그인 계정 없이) */}
-          <details className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
-            <summary className="cursor-pointer text-xs font-medium text-slate-500">
-              선생님이 직접 명단 추가 (로그인 계정 없이 번호·이름만)
-            </summary>
-            <form action={addStudent} className="mt-3 flex gap-2">
-              <input type="hidden" name="classId" value={classId} />
-              <input
-                name="number"
-                type="number"
-                placeholder="번호"
-                required
-                className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
-              />
-              <input
-                name="name"
-                placeholder="이름"
-                required
-                className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 focus:border-brand focus:outline-none"
-              />
-              <SubmitButton
-                pendingText="추가 중…"
-                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-              >
-                추가
-              </SubmitButton>
-            </form>
-            <form action={bulkAddStudents} className="mt-2 space-y-2">
-              <input type="hidden" name="classId" value={classId} />
-              <textarea
-                name="roster"
-                rows={4}
-                placeholder={"엑셀에서 번호·이름 두 열을 복사해 붙여넣거나, 한 줄에 하나씩:\n1, 민수\n2, 지영"}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  이미 있는 번호는 이름이 갱신돼요.
-                </span>
-                <SubmitButton
-                  pendingText="등록 중…"
-                  className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-                >
-                  일괄 등록
-                </SubmitButton>
-              </div>
-            </form>
-          </details>
         </section>
 
         {/* 과제(지문) */}

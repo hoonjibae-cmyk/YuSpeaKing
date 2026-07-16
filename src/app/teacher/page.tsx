@@ -120,12 +120,7 @@ export default async function TeacherDashboard({
                   학생 {studentCount}명 · 과제 {assignmentCount}개
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-xs text-slate-400">반 코드</div>
-                <div className="font-mono text-lg font-bold tracking-wider text-brand">
-                  {c.class_code}
-                </div>
-              </div>
+              <span className="text-sm text-brand">관리 →</span>
             </Link>
           );
         })}

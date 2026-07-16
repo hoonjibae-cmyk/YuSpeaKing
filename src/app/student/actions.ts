@@ -18,13 +18,16 @@ export async function studentSignup(formData: FormData) {
   const school = String(formData.get("school") || "").trim();
   const grade = String(formData.get("grade") || "").trim();
   const classId = String(formData.get("classId") || "").trim();
+  const signupCode = String(formData.get("signup_code") || "").trim();
   const username = String(formData.get("username") || "")
     .trim()
     .toLowerCase();
   const password = String(formData.get("password") || "");
   const passwordConfirm = String(formData.get("password_confirm") || "");
 
-  const back = "/student/signup";
+  const back = signupCode
+    ? `/student/signup?t=${encodeURIComponent(signupCode)}`
+    : "/student/signup";
   if (!name || !school || !grade || !classId) {
     redirect(`${back}?error=${encodeURIComponent("모든 항목을 입력해 주세요")}`);
   }
@@ -52,6 +55,20 @@ export async function studentSignup(formData: FormData) {
     .single();
   if (!klass) {
     redirect(`${back}?error=${encodeURIComponent("수강반을 선택해 주세요")}`);
+  }
+
+  // 가입 링크(선생님)와 선택한 반의 담당 선생님이 일치하는지 확인
+  if (signupCode) {
+    const { data: linkTeacher } = await admin
+      .from("teachers")
+      .select("id")
+      .eq("signup_code", signupCode)
+      .maybeSingle();
+    if (!linkTeacher || linkTeacher.id !== klass.teacher_id) {
+      redirect(
+        `${back}?error=${encodeURIComponent("수강반 정보가 올바르지 않아요")}`
+      );
+    }
   }
 
   const { error } = await admin.from("students").insert({

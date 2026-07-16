@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { AzureScores } from "@/lib/types";
 import WordHighlights from "@/components/WordHighlights";
 import Recorder from "./Recorder";
+import { todayKST } from "@/lib/date";
 
 export default async function StudentAssignmentPage({
   params,
@@ -17,7 +18,7 @@ export default async function StudentAssignmentPage({
   const { data: assignment } = await admin
     .from("assignments")
     .select(
-      "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts"
+      "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts, due_date"
     )
     .eq("id", params.assignmentId)
     .single();
@@ -38,6 +39,8 @@ export default async function StudentAssignmentPage({
 
   const usedAttempts = submission?.attempt_count ?? 0;
   const remainingAttempts = Math.max(0, assignment.max_attempts - usedAttempts);
+  // 마감이 지난 과제는 제출 잠금(음성 청취는 가능)
+  const isPast = !!assignment.due_date && assignment.due_date < todayKST();
 
   return (
     <main className="mx-auto max-w-lg px-6 py-8">
@@ -97,20 +100,34 @@ export default async function StudentAssignmentPage({
           <h2 className="text-sm font-semibold text-slate-500">
             3. 직접 읽으며 녹음하기 🎙️
           </h2>
-          <span
-            className={`text-xs font-medium ${
-              remainingAttempts <= 0 ? "text-red-500" : "text-slate-500"
-            }`}
-          >
-            남은 제출 {remainingAttempts}/{assignment.max_attempts}회
-          </span>
+          {!isPast && (
+            <span
+              className={`text-xs font-medium ${
+                remainingAttempts <= 0 ? "text-red-500" : "text-slate-500"
+              }`}
+            >
+              남은 제출 {remainingAttempts}/{assignment.max_attempts}회
+            </span>
+          )}
         </div>
         <div className="mt-2">
-          <Recorder
-            assignmentId={assignment.id}
-            alreadySubmitted={alreadySubmitted}
-            remainingAttempts={remainingAttempts}
-          />
+          {isPast ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
+              <div className="text-2xl">🔒</div>
+              <p className="mt-2 text-sm font-medium text-slate-600">
+                마감된 과제예요. 지금은 새로 제출할 수 없어요.
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                지문과 원어민 음성은 계속 듣고 연습할 수 있어요.
+              </p>
+            </div>
+          ) : (
+            <Recorder
+              assignmentId={assignment.id}
+              alreadySubmitted={alreadySubmitted}
+              remainingAttempts={remainingAttempts}
+            />
+          )}
         </div>
       </section>
 

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
-import { impersonateTeacher } from "./actions";
+import { impersonateTeacher, approveTeacher, rejectTeacher } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function AdminDashboard() {
 
   const [teachersRes, classesRes, studentsRes, assignmentsRes, submissionsRes] =
     await Promise.all([
-      admin.from("teachers").select("id, name, email, role"),
+      admin.from("teachers").select("id, name, email, role, status"),
       admin.from("classes").select("id, teacher_id"),
       admin.from("students").select("id, class_id"),
       admin.from("assignments").select("id, class_id, created_at"),
@@ -43,6 +44,9 @@ export default async function AdminDashboard() {
   const usdKrw = 1350;
 
   const teachers = teachersRes.data ?? [];
+  const pendingTeachers = (
+    teachers as { id: string; name: string; email: string; status?: string }[]
+  ).filter((t) => t.status === "pending");
   const classes = classesRes.data ?? [];
   const students = studentsRes.data ?? [];
   const assignments = assignmentsRes.data ?? [];
@@ -133,6 +137,47 @@ export default async function AdminDashboard() {
           </button>
         </form>
       </header>
+
+      {/* 선생님 가입 신청 승인 */}
+      {pendingTeachers.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="font-semibold text-amber-700">
+            선생님 가입 신청 {pendingTeachers.length}건
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {pendingTeachers.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {t.name || "(이름 없음)"}
+                  </div>
+                  <div className="truncate text-xs text-slate-400">{t.email}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <form action={approveTeacher}>
+                    <input type="hidden" name="teacherId" value={t.id} />
+                    <SubmitButton
+                      pendingText="승인 중…"
+                      className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
+                    >
+                      승인
+                    </SubmitButton>
+                  </form>
+                  <form action={rejectTeacher}>
+                    <input type="hidden" name="teacherId" value={t.id} />
+                    <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100">
+                      거절
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* 이번 달 AI 비용 */}
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">

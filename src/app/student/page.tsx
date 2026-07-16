@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getStudentSession } from "@/lib/student-session";
+import { getActiveStudent } from "@/lib/student-guard";
 import { studentLogin } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { Logo } from "@/components/Logo";
@@ -10,7 +10,7 @@ export default async function StudentEntryPage({
 }: {
   searchParams: { error?: string; signup?: string };
 }) {
-  if (await getStudentSession()) redirect("/student/home");
+  if (await getActiveStudent()) redirect("/student/home");
 
   const inputCls =
     "w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none";
@@ -74,6 +74,10 @@ export default async function StudentEntryPage({
         >
           가입 신청하기
         </Link>
+      </p>
+      <p className="mt-2 text-center text-xs text-slate-400">
+        아이디·비밀번호를 잊었으면 선생님께 문의하세요. (선생님이 재설정해 줄 수
+        있어요)
       </p>
     </main>
   );

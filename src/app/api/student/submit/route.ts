@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStudentSession } from "@/lib/student-session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { todayKST } from "@/lib/date";
 
 export const runtime = "nodejs";
 
@@ -26,11 +27,19 @@ export async function POST(req: Request) {
   // 과제가 이 학생의 반 것인지 확인
   const { data: assignment } = await admin
     .from("assignments")
-    .select("id, class_id, max_attempts")
+    .select("id, class_id, max_attempts, due_date")
     .eq("id", assignmentId)
     .single();
   if (!assignment || assignment.class_id !== session.classId) {
     return NextResponse.json({ error: "권한이 없어요" }, { status: 403 });
+  }
+
+  // 마감이 지난 과제는 제출 불가
+  if (assignment.due_date && assignment.due_date < todayKST()) {
+    return NextResponse.json(
+      { error: "마감된 과제예요. 지금은 제출할 수 없어요." },
+      { status: 403 }
+    );
   }
 
   // 재제출 횟수 제한 확인

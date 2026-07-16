@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
-import { createClass, signOut, updateSlackEmail } from "./actions";
+import { createClass, signOut } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -34,15 +34,6 @@ export default async function TeacherDashboard({
       pendingByClass.set(r.class_id, (pendingByClass.get(r.class_id) ?? 0) + 1);
     }
   }
-
-  // 내 알림 설정(Slack 이메일)
-  const { data: meRow } = await db
-    .from("teachers")
-    .select("email, slack_email")
-    .eq("id", effectiveId)
-    .single();
-  const loginEmail = (meRow as { email?: string } | null)?.email ?? "";
-  const slackEmail = (meRow as { slack_email?: string } | null)?.slack_email ?? "";
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -80,38 +71,8 @@ export default async function TeacherDashboard({
         </p>
       )}
 
-      {/* 알림 설정 */}
-      <details className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
-        <summary className="cursor-pointer font-semibold">
-          🔔 가입 신청 Slack 알림 설정
-        </summary>
-        <p className="mt-2 text-sm text-slate-500">
-          내 반에 학생이 가입 신청하면 Slack으로 DM을 받습니다. 아래에 내
-          <b> Slack 계정 이메일</b>을 적어 주세요. (비워두면 로그인 이메일
-          <span className="font-mono"> {loginEmail || "-"}</span>로 시도해요)
-        </p>
-        <form action={updateSlackEmail} className="mt-3 flex gap-2">
-          <input
-            name="slack_email"
-            type="email"
-            defaultValue={slackEmail}
-            placeholder={loginEmail || "slack-계정-이메일@example.com"}
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-          />
-          <SubmitButton
-            pendingText="저장 중…"
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
-          >
-            저장
-          </SubmitButton>
-        </form>
-        <p className="mt-2 text-[11px] text-slate-400">
-          * 운영자가 Slack 봇 토큰(SLACK_BOT_TOKEN)을 설정해야 DM이 전송됩니다.
-        </p>
-      </details>
-
       {/* 반 만들기 */}
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold">새 반 만들기</h2>
         <form action={createClass} className="mt-3 flex gap-2">
           <input

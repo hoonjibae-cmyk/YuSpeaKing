@@ -257,6 +257,10 @@ export default function PassageComposer({ classId }: { classId: string }) {
             />
           </label>
         </div>
+        <p className="text-[11px] text-amber-600">
+          💡 특별한 사유가 없으면 재제출은 <b>2회</b>를 넘기지 않는 것을 권장해요.
+          (횟수가 많을수록 AI 채점 비용이 늘어나요)
+        </p>
 
         {passage ? (
           <p className="text-[11px] text-slate-400">

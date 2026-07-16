@@ -8,6 +8,7 @@ import {
   deleteStudent,
   approveStudent,
   rejectStudent,
+  resetStudentPassword,
   regenerateSample,
   deleteAssignment,
   updateAssignment,
@@ -22,7 +23,7 @@ export default async function ClassDetailPage({
   searchParams,
 }: {
   params: { classId: string };
-  searchParams: { error?: string };
+  searchParams: { error?: string; pwreset?: string };
 }) {
   const { db, effectiveId, isImpersonating, actingName } =
     await getTeacherContext();
@@ -66,8 +67,19 @@ export default async function ClassDetailPage({
     .filter((s) => s.status !== "pending" && s.status !== "rejected")
     .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
 
+  // 이 선생님의 학생 가입 코드 + 반 목록(승인 시 반 변경용)
+  const [{ data: meRow }, { data: myClassesRaw }] = await Promise.all([
+    db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
+    db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
+  ]);
+  const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;
+  const myClasses = (myClassesRaw ?? []) as { id: string; name: string }[];
+
   const host = headers().get("host");
-  const signupUrl = host ? `https://${host}/student/signup` : "/student/signup";
+  const base = host ? `https://${host}` : "";
+  const signupUrl = signupCode
+    ? `${base}/student/signup?t=${signupCode}`
+    : `${base}/student/signup`;
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -100,6 +112,20 @@ export default async function ClassDetailPage({
         </p>
       )}
 
+      {searchParams.pwreset &&
+        (() => {
+          const [uname, temp] = decodeURIComponent(searchParams.pwreset!).split(
+            "|"
+          );
+          return (
+            <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+              🔑 비밀번호가 재설정됐어요 — 아이디 <b>{uname}</b> · 임시 비밀번호{" "}
+              <b className="font-mono">{temp}</b> (학생에게 전달하고, 로그인 후
+              바꾸도록 안내해 주세요)
+            </p>
+          );
+        })()}
+
       <div className="mt-8 grid gap-8 md:grid-cols-2">
         {/* 학생 명단 */}
         <section>
@@ -124,43 +150,71 @@ export default async function ClassDetailPage({
             </div>
           </div>
 
-          {/* 승인 대기 */}
+          {/* 승인 대기 (정보 수정 후 승인 가능) */}
           {pending.length > 0 && (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <div className="text-sm font-semibold text-amber-700">
                 가입 신청 대기 {pending.length}건
               </div>
+              <p className="mt-0.5 text-[11px] text-amber-600">
+                학생이 잘못 적은 정보가 있으면 고친 뒤 승인하세요.
+              </p>
               <ul className="mt-2 space-y-2">
                 {pending.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">{s.name}</div>
-                      <div className="truncate text-xs text-slate-400">
-                        {s.school} {s.grade} · 아이디 {s.username}
-                      </div>
+                  <li key={s.id} className="rounded-lg bg-white p-3">
+                    <div className="text-xs text-slate-400">
+                      아이디 <span className="font-mono">{s.username}</span>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <form action={approveStudent}>
-                        <input type="hidden" name="classId" value={classId} />
-                        <input type="hidden" name="studentId" value={s.id} />
+                    <form action={approveStudent} className="mt-2 space-y-2">
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="studentId" value={s.id} />
+                      <div className="flex gap-2">
+                        <input
+                          name="name"
+                          defaultValue={s.name}
+                          placeholder="이름"
+                          className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+                        />
+                        <input
+                          name="school"
+                          defaultValue={s.school ?? ""}
+                          placeholder="학교"
+                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+                        />
+                        <input
+                          name="grade"
+                          defaultValue={s.grade ?? ""}
+                          placeholder="학년"
+                          className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          name="targetClassId"
+                          defaultValue={classId}
+                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+                        >
+                          {myClasses.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
                         <SubmitButton
                           pendingText="승인 중…"
                           className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
                         >
                           승인
                         </SubmitButton>
-                      </form>
-                      <form action={rejectStudent}>
-                        <input type="hidden" name="classId" value={classId} />
-                        <input type="hidden" name="studentId" value={s.id} />
-                        <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100">
-                          거절
-                        </button>
-                      </form>
-                    </div>
+                      </div>
+                    </form>
+                    <form action={rejectStudent} className="mt-1 text-right">
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="studentId" value={s.id} />
+                      <button className="text-xs text-slate-400 hover:text-red-500">
+                        거절
+                      </button>
+                    </form>
                   </li>
                 ))}
               </ul>
@@ -187,13 +241,24 @@ export default async function ClassDetailPage({
                     </span>
                   )}
                 </span>
-                <form action={deleteStudent}>
-                  <input type="hidden" name="classId" value={classId} />
-                  <input type="hidden" name="studentId" value={s.id} />
-                  <button className="text-xs text-slate-400 hover:text-red-500">
-                    삭제
-                  </button>
-                </form>
+                <span className="flex items-center gap-3">
+                  {s.username && (
+                    <form action={resetStudentPassword}>
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="studentId" value={s.id} />
+                      <button className="text-xs text-slate-400 hover:text-brand">
+                        비번 재설정
+                      </button>
+                    </form>
+                  )}
+                  <form action={deleteStudent}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <button className="text-xs text-slate-400 hover:text-red-500">
+                      삭제
+                    </button>
+                  </form>
+                </span>
               </li>
             ))}
           </ul>
@@ -374,6 +439,9 @@ export default async function ClassDetailPage({
                           저장
                         </SubmitButton>
                       </div>
+                      <p className="text-[11px] text-amber-600">
+                        💡 재제출은 특별한 사유가 없으면 2회를 넘기지 않길 권장해요.
+                      </p>
                       <p className="text-[11px] text-slate-400">
                         지문을 바꾸면 샘플음성이 자동으로 다시 생성돼요.
                       </p>

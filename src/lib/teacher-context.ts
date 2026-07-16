@@ -30,6 +30,20 @@ export async function getTeacherContext(): Promise<TeacherContext> {
     .single();
   const isAdmin = me?.role === "admin";
 
+  // 승인 상태 확인 (status 컬럼은 migration 009 이후 존재 — 별도 조회로 안전 처리)
+  if (!isAdmin) {
+    const { data: st } = await supabase
+      .from("teachers")
+      .select("status")
+      .eq("id", user.id)
+      .single();
+    if (st?.status && st.status !== "approved") {
+      redirect(
+        st.status === "rejected" ? "/teacher/pending?rejected=1" : "/teacher/pending"
+      );
+    }
+  }
+
   const impId = cookies().get(IMPERSONATE_COOKIE)?.value;
 
   if (isAdmin && impId && impId !== user.id) {

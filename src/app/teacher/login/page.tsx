@@ -28,7 +28,7 @@ export default async function TeacherLoginPage({
 
         {searchParams.signup && (
           <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-            가입 확인 메일을 확인한 뒤 로그인하세요.
+            가입 신청이 접수됐어요. 총괄관리자 승인 후 로그인할 수 있어요.
           </p>
         )}
         {searchParams.error && (
@@ -68,11 +68,29 @@ export default async function TeacherLoginPage({
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
             />
           </div>
+          {isSignup && (
+            <div>
+              <label className="text-sm font-medium text-slate-600">
+                Slack 이메일 <span className="text-red-500">*</span>
+              </label>
+              <input
+                name="slack_email"
+                type="email"
+                required
+                placeholder="가입 신청 알림을 받을 Slack 계정 이메일"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                학생 가입 신청 시 이 Slack 계정으로 DM을 받아요. (Slack
+                워크스페이스 멤버 이메일)
+              </p>
+            </div>
+          )}
           <button
             type="submit"
             className="w-full rounded-lg bg-brand py-2.5 font-medium text-white transition hover:bg-brand-dark"
           >
-            {isSignup ? "가입하기" : "로그인"}
+            {isSignup ? "가입 신청하기" : "로그인"}
           </button>
         </form>
 

@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
 import { synthesizeSpeech } from "@/lib/ai/tts";
+import { hashPassword } from "@/lib/student-session";
+import { notifyTeacher } from "@/lib/slack";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
@@ -50,17 +52,55 @@ export async function signIn(formData: FormData) {
 }
 
 export async function signUp(formData: FormData) {
-  const email = String(formData.get("email") || "");
+  const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
-  const name = String(formData.get("name") || "");
+  const name = String(formData.get("name") || "").trim();
+  const slackEmail = String(formData.get("slack_email") || "").trim();
+
+  if (!email || !password || !name || !slackEmail) {
+    redirect(
+      `/teacher/login?mode=signup&error=${encodeURIComponent(
+        "이름·이메일·비밀번호·Slack 이메일을 모두 입력해 주세요"
+      )}`
+    );
+  }
+
   const supabase = createClient();
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name } },
+    options: { data: { name, slack_email: slackEmail } },
   });
-  if (error) redirect(`/teacher/login?error=${encodeURIComponent(error.message)}`);
-  redirect("/teacher/login?signup=1");
+  if (error) {
+    redirect(
+      `/teacher/login?mode=signup&error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  // 총괄관리자(admin)에게 가입 신청 Slack DM (best-effort)
+  try {
+    const admin = createAdminClient();
+    const { data: admins } = await admin
+      .from("teachers")
+      .select("email, slack_email")
+      .eq("role", "admin");
+    const text =
+      `🧑‍🏫 유스피킹 선생님 가입 신청\n` +
+      `• 이름: ${name}\n` +
+      `• 이메일: ${email}\n` +
+      `• Slack: ${slackEmail}\n` +
+      `→ 운영자 대시보드에서 승인해 주세요.`;
+    for (const a of (admins ?? []) as {
+      email?: string;
+      slack_email?: string;
+    }[]) {
+      await notifyTeacher(a.slack_email || a.email, text);
+    }
+  } catch (e) {
+    console.error("[선생님가입] 관리자 알림 실패:", e);
+  }
+
+  redirect("/teacher/login?signup=pending");
 }
 
 export async function signOut() {
@@ -74,16 +114,6 @@ export async function signOut() {
 export async function stopImpersonating() {
   clearImpersonation();
   redirect("/admin");
-}
-
-// ---------- 알림 설정 ----------
-
-// 선생님 Slack 알림 수신 이메일 저장(빈 값이면 로그인 이메일로 폴백)
-export async function updateSlackEmail(formData: FormData) {
-  const { db, effectiveId } = await getTeacherContext();
-  const slackEmail = String(formData.get("slack_email") || "").trim() || null;
-  await db.from("teachers").update({ slack_email: slackEmail }).eq("id", effectiveId);
-  revalidatePath("/teacher");
 }
 
 // ---------- 반 ----------
@@ -199,37 +229,38 @@ export async function resetStudentPin(formData: FormData) {
   revalidatePath(`/teacher/classes/${classId}`);
 }
 
-// 가입 신청 승인: status='approved' + 번호 미배정 시 다음 번호 자동 부여
+// 가입 신청 승인: 정보(이름·학교·학년·수강반) 수정 반영 + 대상 반 다음 번호 부여
 export async function approveStudent(formData: FormData) {
   const { db } = await getTeacherContext();
-  const classId = String(formData.get("classId") || "");
+  const classId = String(formData.get("classId") || ""); // 현재 페이지 반(재검증용)
   const studentId = String(formData.get("studentId") || "");
-  if (!classId || !studentId) redirect(`/teacher/classes/${classId}`);
+  const name = String(formData.get("name") || "").trim();
+  const school = String(formData.get("school") || "").trim();
+  const grade = String(formData.get("grade") || "").trim();
+  const targetClassId =
+    String(formData.get("targetClassId") || "").trim() || classId;
+  if (!studentId) redirect(`/teacher/classes/${classId}`);
 
-  const { data: student } = await db
+  // 대상 반의 다음 번호 자동 부여
+  const { data: rows } = await db
     .from("students")
-    .select("id, number, class_id")
-    .eq("id", studentId)
-    .single();
-  if (!student) redirect(`/teacher/classes/${classId}`);
+    .select("number")
+    .eq("class_id", targetClassId)
+    .not("number", "is", null)
+    .order("number", { ascending: false })
+    .limit(1);
+  const number = Number(rows?.[0]?.number ?? 0) + 1;
 
-  let number = student.number as number | null;
-  if (number == null) {
-    const { data: rows } = await db
-      .from("students")
-      .select("number")
-      .eq("class_id", student.class_id)
-      .not("number", "is", null)
-      .order("number", { ascending: false })
-      .limit(1);
-    const maxNum = rows?.[0]?.number ?? 0;
-    number = Number(maxNum) + 1;
-  }
+  const update: Record<string, unknown> = {
+    status: "approved",
+    class_id: targetClassId,
+    number,
+  };
+  if (name) update.name = name;
+  if (school) update.school = school;
+  if (grade) update.grade = grade;
 
-  await db
-    .from("students")
-    .update({ status: "approved", number })
-    .eq("id", studentId);
+  await db.from("students").update(update).eq("id", studentId);
   revalidatePath(`/teacher/classes/${classId}`);
 }
 
@@ -240,6 +271,39 @@ export async function rejectStudent(formData: FormData) {
   const studentId = String(formData.get("studentId") || "");
   await db.from("students").update({ status: "rejected" }).eq("id", studentId);
   revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 학생 비밀번호 재설정(분실 시): 임시 비밀번호 생성 → 선생님이 학생에게 전달
+function genTempPassword(): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(6);
+  let pw = "";
+  for (let i = 0; i < 6; i++) pw += alphabet[bytes[i] % alphabet.length];
+  return pw;
+}
+
+export async function resetStudentPassword(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const { data: s } = await db
+    .from("students")
+    .select("username")
+    .eq("id", studentId)
+    .single();
+  if (!s) redirect(`/teacher/classes/${classId}`);
+
+  const temp = genTempPassword();
+  await db
+    .from("students")
+    .update({ password_hash: hashPassword(temp) })
+    .eq("id", studentId);
+
+  redirect(
+    `/teacher/classes/${classId}?pwreset=${encodeURIComponent(
+      `${s.username ?? ""}|${temp}`
+    )}`
+  );
 }
 
 // ---------- 과제 (지문 등록 + TTS 샘플음성) ----------

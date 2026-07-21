@@ -15,23 +15,30 @@ export default async function StudentAssignmentPage({
   const session = await requireStudent();
   const admin = createAdminClient();
 
-  const { data: assignment } = await admin
-    .from("assignments")
-    .select(
-      "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts, due_date"
-    )
-    .eq("id", params.assignmentId)
-    .single();
+  // 과제·제출 조회는 서로 독립적이라 병렬 처리 (id는 params 로 이미 확정)
+  const [assignmentRes, submissionRes] = await Promise.all([
+    admin
+      .from("assignments")
+      .select(
+        "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts, due_date"
+      )
+      .eq("id", params.assignmentId)
+      .single(),
+    admin
+      .from("submissions")
+      .select(
+        "status, overall_score, student_feedback, attempt_count, azure_scores"
+      )
+      .eq("assignment_id", params.assignmentId)
+      .eq("student_id", session.studentId)
+      .maybeSingle(),
+  ]);
+
+  const assignment = assignmentRes.data;
+  const submission = submissionRes.data;
 
   if (!assignment) notFound();
   if (assignment.class_id !== session.classId) redirect("/student/home");
-
-  const { data: submission } = await admin
-    .from("submissions")
-    .select("status, overall_score, student_feedback, attempt_count, azure_scores")
-    .eq("assignment_id", assignment.id)
-    .eq("student_id", session.studentId)
-    .maybeSingle();
 
   const alreadySubmitted =
     !!submission &&

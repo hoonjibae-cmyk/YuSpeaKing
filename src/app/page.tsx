@@ -11,7 +11,6 @@ export default function Home() {
             src="/hero-mobile.png"
             alt="유스피킹 · 목동유쌤영어"
             fill
-            priority
             sizes="100vw"
             className="object-contain object-top"
           />
@@ -38,7 +37,6 @@ export default function Home() {
           src="/hero-desktop.png"
           alt="유스피킹 · 목동유쌤영어"
           fill
-          priority
           sizes="100vw"
           className="object-cover object-center"
         />

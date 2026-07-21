@@ -8,28 +8,39 @@ import { todayKST } from "@/lib/date";
 export default async function StudentHome() {
   const session = await requireStudent();
   const admin = createAdminClient();
+  const today = todayKST();
 
-  const { data: allAssignments } = await admin
-    .from("assignments")
-    .select("id, title, due_date, created_at")
-    .eq("class_id", session.classId)
-    .order("created_at", { ascending: false });
+  // 서로 독립적인 조회는 병렬로 (왕복 시간 단축)
+  const [assignmentsRes, subsRes, studentCountRes] = await Promise.all([
+    admin
+      .from("assignments")
+      .select("id, title, due_date, created_at")
+      .eq("class_id", session.classId)
+      .order("created_at", { ascending: false }),
+    admin
+      .from("submissions")
+      .select("assignment_id, status, overall_score")
+      .eq("student_id", session.studentId),
+    admin
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", session.classId)
+      .eq("status", "approved"),
+  ]);
+
+  const allAssignments = assignmentsRes.data;
+  const subs = subsRes.data;
+  const classStudentCount = studentCountRes.count;
 
   // 마감이 지난 과제는 '지난 과제 목록'으로. 홈에는 진행 중(마감 전/마감 없음)만.
-  const today = todayKST();
   const assignments = (allAssignments ?? []).filter(
     (a) => !a.due_date || a.due_date >= today
   );
   const pastCount = (allAssignments ?? []).length - assignments.length;
 
-  // 이 학생의 제출 상태
-  const { data: subs } = await admin
-    .from("submissions")
-    .select("assignment_id, status, overall_score")
-    .eq("student_id", session.studentId);
   const subMap = new Map((subs ?? []).map((s) => [s.assignment_id, s.status]));
 
-  // 반 전체 제출 인원(과제별) + 반 학생 수
+  // 반 전체 제출 인원(과제별) — 화면에 보이는 과제만 집계
   const visibleIds = assignments.map((a) => a.id);
   const submitCountByAssignment = new Map<string, number>();
   if (visibleIds.length) {
@@ -44,11 +55,6 @@ export default async function StudentHome() {
       );
     }
   }
-  const { count: classStudentCount } = await admin
-    .from("students")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", session.classId)
-    .eq("status", "approved");
   const totalStudents = classStudentCount ?? 0;
 
   // ---- 게임화: 성취 배지 & 연속 제출 스트릭 ----

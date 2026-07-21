@@ -35,8 +35,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    // _next 정적 파일, 이미지, favicon 제외
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  // 교사 세션 갱신은 교사/운영자 라우트에서만 필요.
+  // 학생·랜딩 등 다른 경로에서는 Supabase auth 왕복을 하지 않아 더 빠르다.
+  matcher: ["/teacher/:path*", "/admin/:path*"],
 };

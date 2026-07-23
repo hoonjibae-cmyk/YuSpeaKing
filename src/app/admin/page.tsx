@@ -11,6 +11,7 @@ import {
   deleteTeacher,
 } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
 
@@ -259,9 +260,12 @@ export default async function AdminDashboard({
                   </form>
                   <form action={deleteTeacher}>
                     <input type="hidden" name="teacherId" value={t.id} />
-                    <button className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50">
+                    <ConfirmSubmitButton
+                      message={`'${t.name || t.email}' 가입 신청을 삭제할까요? 되돌릴 수 없어요.`}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                    >
                       삭제
-                    </button>
+                    </ConfirmSubmitButton>
                   </form>
                 </div>
               </li>
@@ -441,13 +445,12 @@ export default async function AdminDashboard({
                         </form>
                         <form action={deleteTeacher}>
                           <input type="hidden" name="teacherId" value={r.id} />
-                          <button
-                            type="submit"
+                          <ConfirmSubmitButton
+                            message={`'${r.name}' 선생님의 계정과 그 선생님의 반·학생·과제·제출 기록이 모두 삭제됩니다. 되돌릴 수 없어요. 정말 삭제할까요?`}
                             className="text-xs text-slate-400 hover:text-red-500"
-                            title="이 선생님의 계정·반·과제를 모두 삭제합니다"
                           >
                             계정 삭제
-                          </button>
+                          </ConfirmSubmitButton>
                         </form>
                       </div>
                     )}

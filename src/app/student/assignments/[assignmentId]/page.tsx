@@ -45,7 +45,8 @@ export default async function StudentAssignmentPage({
     ["submitted", "evaluating", "evaluated"].includes(submission.status);
 
   const usedAttempts = submission?.attempt_count ?? 0;
-  const remainingAttempts = Math.max(0, assignment.max_attempts - usedAttempts);
+  const MAX_ATTEMPTS = 1; // 제출(분석)은 일괄 1회로 고정
+  const remainingAttempts = Math.max(0, MAX_ATTEMPTS - usedAttempts);
   // 마감이 지난 과제는 제출 잠금(음성 청취는 가능)
   const isPast = !!assignment.due_date && assignment.due_date < todayKST();
 
@@ -113,7 +114,7 @@ export default async function StudentAssignmentPage({
                 remainingAttempts <= 0 ? "text-red-500" : "text-slate-500"
               }`}
             >
-              남은 제출 {remainingAttempts}/{assignment.max_attempts}회
+              남은 제출 {remainingAttempts}/{MAX_ATTEMPTS}회
             </span>
           )}
         </div>

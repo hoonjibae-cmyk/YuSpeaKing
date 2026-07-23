@@ -335,10 +335,7 @@ export async function createAssignment(formData: FormData) {
   const title = String(formData.get("title") || "").trim();
   const passageText = String(formData.get("passage_text") || "").trim();
   const dueDate = String(formData.get("due_date") || "") || null;
-  const maxAttempts = Math.min(
-    10,
-    Math.max(1, parseInt(String(formData.get("max_attempts") || "2"), 10) || 2)
-  );
+  const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
   const voice = normalizeVoice(String(formData.get("voice") || ""));
 
   if (!classId || !title || !passageText) {
@@ -430,10 +427,7 @@ export async function updateAssignment(formData: FormData) {
   const title = String(formData.get("title") || "").trim();
   const passageText = String(formData.get("passage_text") || "").trim();
   const dueDate = String(formData.get("due_date") || "") || null;
-  const maxAttempts = Math.min(
-    10,
-    Math.max(1, parseInt(String(formData.get("max_attempts") || "2"), 10) || 2)
-  );
+  const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
   if (!assignmentId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
   }

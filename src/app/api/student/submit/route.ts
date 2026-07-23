@@ -50,7 +50,8 @@ export async function POST(req: Request) {
     .eq("student_id", session.studentId)
     .maybeSingle();
   const usedAttempts = existing?.attempt_count ?? 0;
-  if (usedAttempts >= assignment.max_attempts) {
+  if (usedAttempts >= 1) {
+    // 제출(분석)은 일괄 1회로 고정
     return NextResponse.json(
       { error: "제출 횟수를 모두 사용했어요. 선생님께 문의하세요." },
       { status: 403 }

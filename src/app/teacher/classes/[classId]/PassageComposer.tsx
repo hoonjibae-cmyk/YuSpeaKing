@@ -260,21 +260,9 @@ export default function PassageComposer({ classId }: { classId: string }) {
               className="ml-2 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
             />
           </label>
-          <label className="block text-sm text-slate-500">
-            재제출 허용 횟수
-            <input
-              name="max_attempts"
-              type="number"
-              min={1}
-              max={10}
-              defaultValue={2}
-              className="ml-2 w-16 rounded-lg border border-slate-300 px-2 py-1 focus:border-brand focus:outline-none"
-            />
-          </label>
         </div>
-        <p className="text-[11px] text-amber-600">
-          💡 특별한 사유가 없으면 재제출은 <b>2회</b>를 넘기지 않는 것을 권장해요.
-          (횟수가 많을수록 AI 채점 비용이 늘어나요)
+        <p className="text-[11px] text-slate-400">
+          제출(녹음·분석)은 학생당 <b>1회</b>로 제한돼요.
         </p>
 
         {passage ? (

@@ -8,6 +8,7 @@ import {
   approveTeacher,
   rejectTeacher,
   setTeacherRole,
+  deleteTeacher,
 } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
@@ -256,6 +257,12 @@ export default async function AdminDashboard({
                       거절
                     </button>
                   </form>
+                  <form action={deleteTeacher}>
+                    <input type="hidden" name="teacherId" value={t.id} />
+                    <button className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50">
+                      삭제
+                    </button>
+                  </form>
                 </div>
               </li>
             ))}
@@ -417,20 +424,32 @@ export default async function AdminDashboard({
                     </div>
                     <div className="text-xs text-slate-400">{r.email}</div>
                     {r.id !== meUser.id && (
-                      <form action={setTeacherRole}>
-                        <input type="hidden" name="teacherId" value={r.id} />
-                        <input
-                          type="hidden"
-                          name="role"
-                          value={r.isAdmin ? "teacher" : "admin"}
-                        />
-                        <button
-                          type="submit"
-                          className="text-xs text-slate-400 hover:text-brand"
-                        >
-                          {r.isAdmin ? "운영자 해제" : "운영자로 지정"}
-                        </button>
-                      </form>
+                      <div className="flex items-center gap-3">
+                        <form action={setTeacherRole}>
+                          <input type="hidden" name="teacherId" value={r.id} />
+                          <input
+                            type="hidden"
+                            name="role"
+                            value={r.isAdmin ? "teacher" : "admin"}
+                          />
+                          <button
+                            type="submit"
+                            className="text-xs text-slate-400 hover:text-brand"
+                          >
+                            {r.isAdmin ? "운영자 해제" : "운영자로 지정"}
+                          </button>
+                        </form>
+                        <form action={deleteTeacher}>
+                          <input type="hidden" name="teacherId" value={r.id} />
+                          <button
+                            type="submit"
+                            className="text-xs text-slate-400 hover:text-red-500"
+                            title="이 선생님의 계정·반·과제를 모두 삭제합니다"
+                          >
+                            계정 삭제
+                          </button>
+                        </form>
+                      </div>
                     )}
                   </div>
                 </td>

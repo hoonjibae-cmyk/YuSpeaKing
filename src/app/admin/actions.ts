@@ -35,6 +35,22 @@ export async function rejectTeacher(formData: FormData) {
   revalidatePath("/admin");
 }
 
+// 선생님 가입 내역(계정) 삭제. 인증 유저 삭제 → teachers·반·학생·과제 cascade.
+export async function deleteTeacher(formData: FormData) {
+  const me = await requireAdmin();
+  const teacherId = String(formData.get("teacherId") || "");
+  if (!teacherId || teacherId === me.id) redirect("/admin"); // 자기 자신 삭제 방지
+
+  const admin = createAdminClient();
+  // Auth 유저 삭제 시 teachers(on delete cascade) → classes → students/assignments 까지 정리됨
+  const { error } = await admin.auth.admin.deleteUser(teacherId);
+  if (error) {
+    // 인증 유저가 없거나 실패 시, 프로필 행이라도 정리
+    await admin.from("teachers").delete().eq("id", teacherId);
+  }
+  revalidatePath("/admin");
+}
+
 // 선생님 운영자 지정 / 해제 (role 변경). 자기 자신은 변경 불가.
 export async function setTeacherRole(formData: FormData) {
   const me = await requireAdmin();

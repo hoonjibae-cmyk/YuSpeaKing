@@ -410,17 +410,6 @@ export default async function ClassDetailPage({
                             className="ml-1 rounded border border-slate-300 px-2 py-1"
                           />
                         </label>
-                        <label>
-                          재제출
-                          <input
-                            name="max_attempts"
-                            type="number"
-                            min={1}
-                            max={10}
-                            defaultValue={a.max_attempts as number}
-                            className="ml-1 w-14 rounded border border-slate-300 px-2 py-1"
-                          />
-                        </label>
                         <SubmitButton
                           pendingText="저장 중…"
                           className="ml-auto rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark"
@@ -428,11 +417,9 @@ export default async function ClassDetailPage({
                           저장
                         </SubmitButton>
                       </div>
-                      <p className="text-[11px] text-amber-600">
-                        💡 재제출은 특별한 사유가 없으면 2회를 넘기지 않길 권장해요.
-                      </p>
                       <p className="text-[11px] text-slate-400">
-                        지문을 바꾸면 샘플음성이 자동으로 다시 생성돼요.
+                        제출은 학생당 1회 고정. 지문을 바꾸면 샘플음성이 자동으로
+                        다시 생성돼요.
                       </p>
                     </form>
                   </details>

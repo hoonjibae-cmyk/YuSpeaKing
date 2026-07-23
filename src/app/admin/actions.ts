@@ -22,6 +22,12 @@ export async function approveTeacher(formData: FormData) {
   if (!teacherId) redirect("/admin");
   const admin = createAdminClient();
   await admin.from("teachers").update({ status: "approved" }).eq("id", teacherId);
+  // Supabase 이메일 확인이 켜져 있어도 로그인되도록 자동 확인 처리
+  try {
+    await admin.auth.admin.updateUserById(teacherId, { email_confirm: true });
+  } catch (e) {
+    console.error("[선생님승인] 이메일 자동확인 실패:", e);
+  }
   revalidatePath("/admin");
 }
 

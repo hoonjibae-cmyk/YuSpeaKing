@@ -86,7 +86,7 @@ export async function signUp(formData: FormData) {
   }
 
   const supabase = createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data: signUpData, error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { name, slack_email: slackEmail } },
@@ -95,6 +95,19 @@ export async function signUp(formData: FormData) {
     redirect(
       `/teacher/login?mode=signup&error=${encodeURIComponent(error.message)}`
     );
+  }
+
+  // 자체 승인 체계를 쓰므로 Supabase 이메일 확인은 불필요 → 자동 확인 처리
+  // (그렇지 않으면 'Email not confirmed'로 로그인이 막힘)
+  try {
+    const admin = createAdminClient();
+    if (signUpData.user?.id) {
+      await admin.auth.admin.updateUserById(signUpData.user.id, {
+        email_confirm: true,
+      });
+    }
+  } catch (e) {
+    console.error("[선생님가입] 이메일 자동확인 실패:", e);
   }
 
   // 총괄관리자(admin)에게 가입 신청 Slack DM (best-effort)

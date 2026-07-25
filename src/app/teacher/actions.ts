@@ -213,6 +213,24 @@ export async function unarchiveClass(formData: FormData) {
   redirect("/teacher");
 }
 
+// ---------- 쿠폰/보상 설정 ----------
+
+export async function saveCouponSettings(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const goalRaw = parseInt(String(formData.get("coupon_goal") || "10"), 10);
+  const goal = Number.isNaN(goalRaw) ? 10 : Math.max(1, Math.min(100, goalRaw));
+  const text = String(formData.get("coupon_reward_text") || "").trim();
+
+  // 본인 설정만 수정 (impersonation 시 대행 대상)
+  const admin = createAdminClient();
+  await admin
+    .from("teachers")
+    .update({ coupon_goal: goal, coupon_reward_text: text || null })
+    .eq("id", effectiveId);
+
+  revalidatePath("/teacher");
+}
+
 // ---------- 학생 ----------
 
 export async function addStudent(formData: FormData) {

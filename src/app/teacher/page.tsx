@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
-import { createClass, signOut } from "./actions";
+import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -28,6 +28,15 @@ export default async function TeacherDashboard({
     .select("id", { count: "exact", head: true })
     .eq("teacher_id", effectiveId)
     .not("archived_at", "is", null);
+
+  // 쿠폰/보상 설정
+  const { data: couponRow } = await db
+    .from("teachers")
+    .select("coupon_goal, coupon_reward_text")
+    .eq("id", effectiveId)
+    .single();
+  const couponGoal = couponRow?.coupon_goal ?? 10;
+  const couponRewardText = couponRow?.coupon_reward_text ?? "";
 
   // 반별 가입 승인 대기 수
   const classIds = (classes ?? []).map((c) => c.id);
@@ -102,6 +111,53 @@ export default async function TeacherDashboard({
             만들기
           </SubmitButton>
         </form>
+      </section>
+
+      {/* 쿠폰/보상 설정 */}
+      <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+        <details>
+          <summary className="cursor-pointer font-semibold text-amber-800">
+            🎟️ 쿠폰·보상 설정
+          </summary>
+          <p className="mt-2 text-xs text-amber-700">
+            학생이 과제를 <b>완성도 90% 이상</b>으로 제출하면 쿠폰 1개가 쌓여요.
+            아래에서 정한 개수를 다 모으면 학생 화면에 상품 안내가 뜨고,
+            상품 지급 후 학생 화면의 <b>‘관리자 확인’</b> 버튼을 누르면 쿠폰함이
+            초기화돼요.
+          </p>
+          <form action={saveCouponSettings} className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">
+                목표 쿠폰 개수
+                <input
+                  name="coupon_goal"
+                  type="number"
+                  min={1}
+                  max={100}
+                  defaultValue={couponGoal}
+                  className="ml-2 w-20 rounded-lg border border-slate-300 px-3 py-1.5 focus:border-brand focus:outline-none"
+                />
+                <span className="ml-1 text-sm text-slate-500">개</span>
+              </label>
+            </div>
+            <div>
+              <label className="text-sm text-slate-600">상품 안내 문구</label>
+              <textarea
+                name="coupon_reward_text"
+                rows={2}
+                defaultValue={couponRewardText}
+                placeholder="예: 쿠폰 10개를 모았어요! 선생님께 보여주고 문화상품권을 받아 가세요 🎁"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+              />
+            </div>
+            <SubmitButton
+              pendingText="저장 중…"
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              쿠폰 설정 저장
+            </SubmitButton>
+          </form>
+        </details>
       </section>
 
       {/* 반 목록 */}

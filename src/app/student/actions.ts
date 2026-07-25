@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -9,6 +10,7 @@ import {
   hashPassword,
   verifyPassword,
 } from "@/lib/student-session";
+import { getActiveStudent } from "@/lib/student-guard";
 import { notifyTeacher } from "@/lib/slack";
 
 const USERNAME_RE = /^[a-zA-Z0-9._]{4,20}$/;
@@ -166,4 +168,39 @@ export async function studentLogin(formData: FormData) {
 export async function studentLogout() {
   clearStudentSession();
   redirect("/student");
+}
+
+// ---------- 성취 배지: 이미 축하 연출을 본 배지 기록 ----------
+export async function markBadgesSeen(keys: string[]) {
+  if (!Array.isArray(keys) || keys.length === 0) return;
+  const session = await getActiveStudent();
+  if (!session) return;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("students")
+    .select("seen_badges")
+    .eq("id", session.studentId)
+    .single();
+  const prev = Array.isArray(data?.seen_badges)
+    ? (data!.seen_badges as string[])
+    : [];
+  const merged = Array.from(new Set([...prev, ...keys]));
+  await admin
+    .from("students")
+    .update({ seen_badges: merged })
+    .eq("id", session.studentId);
+}
+
+// ---------- 쿠폰함 리셋(상품 수령 완료) ----------
+// 관리자(선생님)가 실물 상품 지급 후 누르는 버튼. 이 시각 이후 제출분부터 다시 적립.
+export async function redeemCoupons() {
+  const session = await getActiveStudent();
+  if (!session) redirect("/student");
+  const admin = createAdminClient();
+  await admin
+    .from("students")
+    .update({ coupons_reset_at: new Date().toISOString() })
+    .eq("id", session.studentId);
+  revalidatePath("/student/home");
+  redirect("/student/home?redeemed=1");
 }

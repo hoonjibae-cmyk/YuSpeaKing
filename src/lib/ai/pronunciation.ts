@@ -149,8 +149,11 @@ function aggregate(
   const allWords = segments.flatMap((s) => s.words);
   const refCount = normalizeCount(referenceText) || 1;
 
-  // 정확도: 삽입(Insertion) 제외 단어들의 평균 (누락은 0점으로 반영)
-  const scored = allWords.filter((w) => w.errorType !== "Insertion");
+  // 정확도: 실제로 읽은 단어(삽입·누락 제외)의 발음 정확도 평균.
+  // "얼마나 정확히 읽었나"만 보고, "얼마나 많이 읽었나"는 완성도(completeness)가 담당.
+  const scored = allWords.filter(
+    (w) => w.errorType !== "Insertion" && w.errorType !== "Omission"
+  );
   const accuracy = scored.length
     ? scored.reduce((a, w) => a + w.accuracy, 0) / scored.length
     : 0;
@@ -171,11 +174,17 @@ function aggregate(
       (prosodyVals.reduce((a, s) => a + (s.words.length || 1), 0) || 1)
     : undefined;
 
-  // 종합 발음 점수 (Azure 권장 가중치, 억양 포함 시)
-  const pronunciation =
+  // 읽은 부분의 발음 품질 점수 (완성도는 여기서 제외)
+  const quality =
     prosody != null
-      ? accuracy * 0.4 + prosody * 0.2 + fluency * 0.2 + completeness * 0.2
-      : accuracy * 0.5 + fluency * 0.25 + completeness * 0.25;
+      ? accuracy * 0.5 + prosody * 0.25 + fluency * 0.25
+      : accuracy * 0.6 + fluency * 0.4;
+
+  // 완성도 페널티: 지문을 끝까지 읽지 않으면 종합 점수를 크게 낮춘다.
+  // 90% 이상 읽으면 감점 없음, 그 아래로는 읽은 비율에 비례해 가파르게 감점.
+  // (예: 지문의 절반만 읽으면 발음이 좋아도 종합점수는 약 절반으로 떨어진다)
+  const completenessFactor = Math.min(1, completeness / 90);
+  const pronunciation = quality * completenessFactor;
 
   return {
     accuracy: Math.round(accuracy),

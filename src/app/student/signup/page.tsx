@@ -59,6 +59,7 @@ export default async function StudentSignupPage({
     .from("classes")
     .select("id, name")
     .eq("teacher_id", teacher.id)
+    .is("archived_at", null) // 보관된 반은 가입 신청 목록에서 제외
     .order("name");
   const classList = (classes ?? []) as { id: string; name: string }[];
 

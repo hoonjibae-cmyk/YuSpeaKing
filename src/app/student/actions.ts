@@ -51,11 +51,16 @@ export async function studentSignup(formData: FormData) {
   // 수강반 + 담당 선생님 확인
   const { data: klass } = await admin
     .from("classes")
-    .select("id, name, teacher_id, teachers(email, slack_email)")
+    .select("id, name, teacher_id, archived_at, teachers(email, slack_email)")
     .eq("id", classId)
     .single();
   if (!klass) {
     redirect(`${back}?error=${encodeURIComponent("수강반을 선택해 주세요")}`);
+  }
+  if (klass.archived_at) {
+    redirect(
+      `${back}?error=${encodeURIComponent("보관된 반은 신청할 수 없어요. 선생님께 문의해 주세요")}`
+    );
   }
 
   // 가입 링크(선생님)와 선택한 반의 담당 선생님이 일치하는지 확인

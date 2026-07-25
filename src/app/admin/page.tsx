@@ -65,7 +65,7 @@ export default async function AdminDashboard({
   const [teachersRes, classesRes, studentsRes, assignmentsRes, submissionsRes] =
     await Promise.all([
       admin.from("teachers").select("id, name, email, role, status"),
-      admin.from("classes").select("id, teacher_id"),
+      admin.from("classes").select("id, teacher_id").is("archived_at", null),
       admin.from("students").select("id, class_id"),
       admin.from("assignments").select("id, class_id, created_at"),
       admin.from("submissions").select("assignment_id, overall_score, status"),

@@ -19,7 +19,15 @@ export default async function TeacherDashboard({
     .from("classes")
     .select("id, name, class_code, created_at, students(count), assignments(count)")
     .eq("teacher_id", effectiveId)
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
+
+  // 보관된 반 개수 (보관반 목록 진입용)
+  const { count: archivedCount } = await db
+    .from("classes")
+    .select("id", { count: "exact", head: true })
+    .eq("teacher_id", effectiveId)
+    .not("archived_at", "is", null);
 
   // 반별 가입 승인 대기 수
   const classIds = (classes ?? []).map((c) => c.id);
@@ -49,6 +57,12 @@ export default async function TeacherDashboard({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/teacher/archived"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            🗂️ 보관반{archivedCount ? ` (${archivedCount})` : ""}
+          </Link>
           {role === "admin" && !isImpersonating && (
             <Link
               href="/admin"

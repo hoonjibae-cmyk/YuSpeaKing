@@ -10,6 +10,8 @@ import {
   regenerateSample,
   deleteAssignment,
   updateAssignment,
+  archiveClass,
+  unarchiveClass,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
@@ -30,11 +32,12 @@ export default async function ClassDetailPage({
 
   const { data: klass } = await db
     .from("classes")
-    .select("id, name, class_code")
+    .select("id, name, class_code, archived_at")
     .eq("id", classId)
     .eq("teacher_id", effectiveId)
     .single();
   if (!klass) notFound();
+  const isArchived = !!klass.archived_at;
 
   const [{ data: students }, { data: assignments }] = await Promise.all([
     db
@@ -97,7 +100,35 @@ export default async function ClassDetailPage({
             📄 월말 리포트
           </Link>
         </div>
+        {isArchived ? (
+          <form action={unarchiveClass}>
+            <input type="hidden" name="classId" value={classId} />
+            <SubmitButton
+              pendingText="복원 중…"
+              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              다시 불러오기
+            </SubmitButton>
+          </form>
+        ) : (
+          <form action={archiveClass}>
+            <input type="hidden" name="classId" value={classId} />
+            <SubmitButton
+              pendingText="보관 중…"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              🗂️ 반 보관
+            </SubmitButton>
+          </form>
+        )}
       </header>
+
+      {isArchived && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          이 반은 <b>보관 중</b>이에요. 반 목록에는 보이지 않지만 데이터는
+          유지됩니다. “다시 불러오기”로 복원할 수 있어요.
+        </p>
+      )}
 
       {searchParams.error && (
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">

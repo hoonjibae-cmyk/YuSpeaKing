@@ -183,6 +183,36 @@ export async function createClass(formData: FormData) {
   revalidatePath("/teacher");
 }
 
+// 반 보관(아카이브): 목록에서 숨기되 데이터는 유지
+export async function archiveClass(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  if (!classId) redirect("/teacher");
+  await db
+    .from("classes")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", classId)
+    .eq("teacher_id", effectiveId);
+  revalidatePath("/teacher");
+  revalidatePath("/teacher/archived");
+  redirect("/teacher");
+}
+
+// 보관 반 복원
+export async function unarchiveClass(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  if (!classId) redirect("/teacher/archived");
+  await db
+    .from("classes")
+    .update({ archived_at: null })
+    .eq("id", classId)
+    .eq("teacher_id", effectiveId);
+  revalidatePath("/teacher");
+  revalidatePath("/teacher/archived");
+  redirect("/teacher");
+}
+
 // ---------- 학생 ----------
 
 export async function addStudent(formData: FormData) {

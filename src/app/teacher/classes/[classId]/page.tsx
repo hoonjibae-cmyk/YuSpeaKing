@@ -18,6 +18,7 @@ import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
+import { todayKST } from "@/lib/date";
 
 export default async function ClassDetailPage({
   params,
@@ -76,6 +77,8 @@ export default async function ClassDetailPage({
   ]);
   const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;
   const myClasses = (myClassesRaw ?? []) as { id: string; name: string }[];
+
+  const today = todayKST();
 
   const host = headers().get("host");
   const base = host ? `https://${host}` : "";
@@ -321,23 +324,50 @@ export default async function ClassDetailPage({
                       evaluated.length
                   )
                 : null;
+              const dueDate = (a.due_date as string) || null;
+              const isPastDue = !!dueDate && dueDate < today;
               return (
                 <li
                   key={a.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4"
+                  className="overflow-hidden rounded-xl border border-slate-200 bg-white"
                 >
-                  <div className="flex items-start justify-between">
-                    <Link
-                      href={`/teacher/assignments/${a.id}`}
-                      className="font-medium hover:text-brand hover:underline"
-                    >
-                      {a.title}
-                    </Link>
-                    <span className="text-xs text-slate-400">
-                      제출 {subCount}
-                      {avg != null && ` · 평균 ${avg}점`}
+                  {/* 클릭하면 제출 내역 상세로 이동하는 헤더 (한눈에 보이도록 강조) */}
+                  <Link
+                    href={`/teacher/assignments/${a.id}`}
+                    className="group flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 transition hover:bg-brand-light"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-800 group-hover:text-brand">
+                          {a.title}
+                        </span>
+                        {isPastDue ? (
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            마감
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                            진행중
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                        <span>
+                          {dueDate ? `📅 마감 ${dueDate}` : "📅 상시 과제"}
+                        </span>
+                        <span className="text-slate-300">·</span>
+                        <span>
+                          제출 {subCount}명
+                          {avg != null && ` · 평균 ${avg}점`}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white group-hover:bg-brand-dark">
+                      제출 내역 보기 →
                     </span>
-                  </div>
+                  </Link>
+
+                  <div className="p-4">
                   {/* 샘플음성 미리듣기 */}
                   {a.sample_audio_url && (
                     <div className="mt-2 space-y-1.5">
@@ -454,6 +484,7 @@ export default async function ClassDetailPage({
                       </p>
                     </form>
                   </details>
+                  </div>
                 </li>
               );
             })}

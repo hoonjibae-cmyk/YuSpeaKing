@@ -164,6 +164,13 @@ export default async function StudentHome({
           >
             📈 내 기록
           </Link>
+          <Link
+            href="/manual/student"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+            title="사용 설명서"
+          >
+            ❓
+          </Link>
           <form action={studentLogout} className="inline">
             <button className="ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
               나가기

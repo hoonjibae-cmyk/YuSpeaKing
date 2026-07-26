@@ -146,33 +146,36 @@ export default async function StudentHome({
 
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CrownMark className="h-8 w-8" />
-          <div>
-            <h1 className="text-xl font-bold text-brand">오늘의 스피킹</h1>
-            <p className="text-sm text-slate-500">
+      {/* 모바일에서는 제목과 버튼을 두 줄로 나눠 글자가 깨지지 않게 한다 */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          <CrownMark className="h-8 w-8 shrink-0" />
+          <div className="min-w-0">
+            <h1 className="whitespace-nowrap text-xl font-bold text-brand">
+              오늘의 스피킹
+            </h1>
+            <p className="truncate text-sm text-slate-500">
               {session.number != null ? `${session.number}번 ` : ""}
               {session.name}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/student/history"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-brand hover:bg-brand-light"
+            className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-brand hover:bg-brand-light"
           >
             📈 내 기록
           </Link>
           <Link
             href="/manual/student"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+            className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
             title="사용 설명서"
           >
-            ❓
+            ❓ 사용법
           </Link>
           <form action={studentLogout} className="inline">
-            <button className="ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
+            <button className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
               나가기
             </button>
           </form>

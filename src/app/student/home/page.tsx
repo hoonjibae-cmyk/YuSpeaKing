@@ -7,6 +7,7 @@ import { todayKST } from "@/lib/date";
 import type { AzureScores } from "@/lib/types";
 import BadgeCelebration from "@/components/BadgeCelebration";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import { Mascot } from "@/components/Mascots";
 
 export default async function StudentHome({
   searchParams,
@@ -243,26 +244,38 @@ export default async function StudentHome({
         <p className="mt-1 text-[11px] text-amber-600">
           과제를 <b>완성도 90% 이상</b>으로 제출하면 쿠폰 1개가 쌓여요!
         </p>
-        <div className="mt-3 grid grid-cols-5 gap-2">
-          {Array.from({ length: couponGoal }).map((_, i) => (
-            <div
-              key={i}
-              className={`flex aspect-square items-center justify-center rounded-lg text-xl ${
-                i < couponCount
-                  ? "bg-gradient-to-br from-amber-300 to-amber-500 shadow-sm"
-                  : "border border-dashed border-amber-300 bg-white/50 opacity-40"
-              }`}
-            >
-              🎟️
-            </div>
-          ))}
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {Array.from({ length: couponGoal }).map((_, i) => {
+            const filled = i < couponCount;
+            return (
+              <div
+                key={i}
+                className={`flex aspect-square items-center justify-center rounded-xl p-1 ${
+                  filled
+                    ? "border border-amber-300 bg-white shadow-sm"
+                    : "border border-dashed border-amber-300 bg-white/40"
+                }`}
+              >
+                <Mascot
+                  index={i}
+                  className={`h-full w-full ${
+                    filled ? "" : "opacity-20 grayscale"
+                  }`}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {couponFull && (
           <div className="mt-4 rounded-xl border border-amber-300 bg-white p-4 text-center">
-            <div className="text-3xl">🎁</div>
-            <p className="mt-1 text-sm font-bold text-amber-700">
-              쿠폰을 모두 모았어요!
+            <div className="flex items-end justify-center gap-1">
+              <Mascot index={0} className="h-12 w-12" />
+              <Mascot index={1} className="h-14 w-14" />
+              <Mascot index={2} className="h-12 w-12" />
+            </div>
+            <p className="mt-2 text-sm font-bold text-amber-700">
+              🎁 쿠폰을 모두 모았어요!
             </p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
               {rewardText || "선생님께 보여주고 상품을 받아 가세요!"}

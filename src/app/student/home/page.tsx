@@ -285,13 +285,13 @@ export default async function StudentHome({
               🎁 쿠폰을 모두 모았어요!
             </p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-              {rewardText || "선생님께 보여주고 상품을 받아 가세요!"}
+              {rewardText || "데스크 선생님께 보여주고 상품을 받아 가세요!"}
             </p>
 
             <form action={redeemCoupons} className="mt-4">
               <ConfirmSubmitButton
                 message={
-                  "⚠️ 상품을 받은 뒤 선생님(관리자)만 눌러 주세요.\n\n지금 누르면 모아둔 쿠폰이 모두 0개로 초기화됩니다. 정말 초기화할까요?"
+                  "⚠️ 상품을 지급한 뒤 데스크 선생님만 눌러 주세요.\n\n지금 누르면 모아둔 쿠폰이 모두 0개로 초기화됩니다. 정말 초기화할까요?"
                 }
                 className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600"
               >
@@ -299,8 +299,8 @@ export default async function StudentHome({
               </ConfirmSubmitButton>
             </form>
             <p className="mt-2 text-[11px] font-medium text-red-500">
-              ⚠️ 이 버튼은 <b>선생님이 상품을 준 뒤</b>에 누르는 버튼이에요. 누르면
-              쿠폰함이 <b>0개로 초기화</b>돼요. 학생은 누르지 마세요!
+              ⚠️ 이 버튼은 <b>데스크 선생님이 상품을 준 뒤</b>에 누르는 버튼이에요.
+              누르면 쿠폰함이 <b>0개로 초기화</b>돼요. 학생은 누르지 마세요!
             </p>
           </div>
         )}

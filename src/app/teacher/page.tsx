@@ -152,7 +152,7 @@ export default async function TeacherDashboard({
                 name="coupon_reward_text"
                 rows={2}
                 defaultValue={couponRewardText}
-                placeholder="예: 쿠폰 10개를 모았어요! 데스크 선생님께 보여주고 문화상품권을 받아 가세요 🎁"
+                placeholder="예: 쿠폰 10개를 모았어요! 데스크 선생님께 보여주고 상품을 받아 가세요 🎁"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
               />
             </div>

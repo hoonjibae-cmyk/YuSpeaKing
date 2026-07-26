@@ -13,4 +13,6 @@
 | `5.png` | 햄스터 |
 
 학생 화면 쿠폰함에서 위 순서대로 한 칸씩 채워집니다.
-파일을 올린 뒤에는 `src/components/Mascots.tsx` 가 SVG 대신 이 이미지를 쓰도록 바꿔 주세요.
+`src/components/Mascots.tsx` 가 이 파일들을 읽어 갑니다.
+캐릭터를 바꾸려면 같은 이름으로 덮어쓰고, 이미지 크기가 달라졌다면
+`Mascots.tsx` 의 `width`/`height` 값도 함께 고쳐 주세요.

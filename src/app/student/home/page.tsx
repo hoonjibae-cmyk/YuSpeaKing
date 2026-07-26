@@ -259,7 +259,7 @@ export default async function StudentHome({
                 <Mascot
                   index={i}
                   className={`h-full w-full ${
-                    filled ? "" : "opacity-20 grayscale"
+                    filled ? "" : "opacity-30 grayscale"
                   }`}
                 />
               </div>

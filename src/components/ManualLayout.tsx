@@ -13,8 +13,9 @@ export function ManualShell({
 }: {
   title: string;
   subtitle: string;
-  otherHref: string;
-  otherLabel: string;
+  // 다른 매뉴얼로 가는 링크 (없으면 표시하지 않음 — 학생용에는 선생님용 링크를 두지 않는다)
+  otherHref?: string;
+  otherLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -25,12 +26,14 @@ export function ManualShell({
           ← 유스피킹 홈
         </Link>
         <div className="flex items-center gap-2">
-          <Link
-            href={otherHref}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            {otherLabel}
-          </Link>
+          {otherHref && otherLabel && (
+            <Link
+              href={otherHref}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              {otherLabel}
+            </Link>
+          )}
           <PrintButton className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark" />
         </div>
       </div>

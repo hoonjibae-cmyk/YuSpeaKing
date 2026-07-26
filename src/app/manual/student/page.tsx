@@ -16,8 +16,6 @@ export default function StudentManualPage() {
     <ManualShell
       title="학생용 사용 설명서"
       subtitle="유스피킹으로 영어 스피킹 과제를 하는 방법"
-      otherHref="/manual/teacher"
-      otherLabel="선생님용 보기"
     >
       <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-[13.5px] text-slate-600">
         유스피킹은 <b>영어 지문을 소리 내어 읽고 녹음해서 제출</b>하면, AI가

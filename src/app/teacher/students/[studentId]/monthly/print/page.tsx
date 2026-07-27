@@ -23,7 +23,7 @@ export default async function MonthlyPrintPage({
 
   const { data: student } = await db
     .from("students")
-    .select("id, name, number, school, grade, class_id")
+    .select("id, name, number, school, grade, class_id, approved_at")
     .eq("id", studentId)
     .single();
   if (!student) notFound();
@@ -36,7 +36,13 @@ export default async function MonthlyPrintPage({
     .single();
   if (!klass) notFound();
 
-  const data = await gatherMonthly(db, student.id, student.class_id, month);
+  const data = await gatherMonthly(
+    db,
+    student.id,
+    student.class_id,
+    month,
+    student.approved_at
+  );
 
   const { data: report } = await db
     .from("monthly_reports")
@@ -118,6 +124,14 @@ export default async function MonthlyPrintPage({
           />
           <Stat label="취약 단어" value={`${data.weakWords.length}개`} />
         </section>
+
+        {/* 신입생 안내: 제출률이 등록 이후 과제 기준임을 밝힌다 */}
+        {(data.joinedThisMonth || data.beforeJoinCount > 0) && data.approvedAt && (
+          <p className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-[11.5px] text-slate-500">
+            {data.approvedAt} 등록{data.joinedThisMonth ? "(이번 달 등록)" : ""} ·
+            위 제출 현황은 <b>등록 이후 출제된 과제</b>만을 기준으로 집계했습니다.
+          </p>
+        )}
 
         {/* 취약 단어 */}
         <section className="print-avoid-break mt-4">

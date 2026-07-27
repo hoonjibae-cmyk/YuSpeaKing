@@ -21,7 +21,7 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
 
   const { data: submission } = await admin
     .from("submissions")
-    .select("id, audio_path, assignment_id")
+    .select("id, audio_path, assignment_id, student_id")
     .eq("id", submissionId)
     .single();
   if (!submission) return;
@@ -49,8 +49,23 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
     // 2) 발음평가 (Azure 우선, 없으면 OpenAI Whisper 대체)
     const scores = await assessSpeech(wav, assignment.passage_text);
 
-    // 3) Claude 2단 피드백
-    const feedback = await generateFeedback(scores, assignment.passage_text);
+    // 3) Claude 2단 피드백 (등록일·누적 제출 횟수를 함께 전달해
+    //    신입생에게 과거 이력을 전제한 코멘트가 나가지 않도록 한다)
+    const [{ data: student }, { count: subCount }] = await Promise.all([
+      admin
+        .from("students")
+        .select("approved_at")
+        .eq("id", submission.student_id)
+        .maybeSingle(),
+      admin
+        .from("submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("student_id", submission.student_id),
+    ]);
+    const feedback = await generateFeedback(scores, assignment.passage_text, {
+      approvedAt: (student?.approved_at as string | null) ?? null,
+      submissionCount: subCount ?? undefined,
+    });
 
     // 4) 저장
     await admin

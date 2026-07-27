@@ -346,13 +346,16 @@ export async function approveStudent(formData: FormData) {
   if (!studentId) redirect(`/teacher/classes/${classId}`);
 
   // 대상 반의 다음 번호 자동 부여
-  const { data: rows } = await db
-    .from("students")
-    .select("number")
-    .eq("class_id", targetClassId)
-    .not("number", "is", null)
-    .order("number", { ascending: false })
-    .limit(1);
+  const [{ data: rows }, { data: current }] = await Promise.all([
+    db
+      .from("students")
+      .select("number")
+      .eq("class_id", targetClassId)
+      .not("number", "is", null)
+      .order("number", { ascending: false })
+      .limit(1),
+    db.from("students").select("approved_at").eq("id", studentId).maybeSingle(),
+  ]);
   const number = Number(rows?.[0]?.number ?? 0) + 1;
 
   const update: Record<string, unknown> = {
@@ -360,6 +363,8 @@ export async function approveStudent(formData: FormData) {
     class_id: targetClassId,
     number,
   };
+  // 최초 승인 시점만 기록 (재승인해도 원래 등록일은 유지)
+  if (!current?.approved_at) update.approved_at = new Date().toISOString();
   if (name) update.name = name;
   if (school) update.school = school;
   if (grade) update.grade = grade;
@@ -567,11 +572,16 @@ async function ownedStudent(
 ) {
   const { data } = await db
     .from("students")
-    .select("id, name, class_id, classes!inner(teacher_id)")
+    .select("id, name, class_id, approved_at, classes!inner(teacher_id)")
     .eq("id", studentId)
     .eq("classes.teacher_id", effectiveId)
     .single();
-  return data as { id: string; name: string; class_id: string } | null;
+  return data as {
+    id: string;
+    name: string;
+    class_id: string;
+    approved_at: string | null;
+  } | null;
 }
 
 // AI 월말 리포트 초안 생성
@@ -582,7 +592,13 @@ export async function generateMonthlyDraft(formData: FormData) {
   const student = await ownedStudent(db, effectiveId, studentId);
   if (!student || !month) redirect("/teacher");
 
-  const data = await gatherMonthly(db, student.id, student.class_id, month);
+  const data = await gatherMonthly(
+    db,
+    student.id,
+    student.class_id,
+    month,
+    student.approved_at
+  );
   let content: string;
   try {
     content = await generateMonthlyReportDraft(student.name, month, data);

@@ -35,14 +35,20 @@ export interface MonthlyData {
   growth: number | null; // lastScore - firstScore
   items: MonthlyItem[];
   weakWords: string[]; // 자주 틀린 단어 top
+  approvedAt: string | null; // 가입 승인일 (YYYY-MM-DD)
+  joinedThisMonth: boolean; // 이 달에 등록한 신입생인지
+  beforeJoinCount: number; // 등록 이전에 출제되어 집계에서 제외한 과제 수
 }
 
-// 특정 학생의 한 달치 과제·제출·평가 집계
+// 특정 학생의 한 달치 과제·제출·평가 집계.
+// 가입 승인일(approvedAt) 이전에 출제된 과제는 그 학생에게 부여된 적이 없으므로
+// 제출률 계산에서 제외한다. (신입생이 낮은 제출률로 평가되는 문제 방지)
 export async function gatherMonthly(
   db: SupabaseClient,
   studentId: string,
   classId: string,
-  month: string
+  month: string,
+  approvedAt?: string | null
 ): Promise<MonthlyData> {
   const { start, endExclusive } = monthRange(month);
 
@@ -54,11 +60,21 @@ export async function gatherMonthly(
     .lt("created_at", endExclusive)
     .order("created_at", { ascending: true });
 
-  const list = (assignments ?? []) as {
+  const all = (assignments ?? []) as {
     id: string;
     title: string;
     created_at: string;
   }[];
+
+  // 등록일 이전 과제는 제외 (날짜 단위로 비교 — 등록 당일 과제는 포함)
+  const joinDay = approvedAt ? approvedAt.slice(0, 10) : null;
+  const list = joinDay
+    ? all.filter((a) => a.created_at.slice(0, 10) >= joinDay)
+    : all;
+  const beforeJoinCount = all.length - list.length;
+  const joinedThisMonth =
+    !!joinDay && joinDay >= start && joinDay < endExclusive;
+
   const ids = list.map((a) => a.id);
 
   let subs: {
@@ -126,5 +142,8 @@ export async function gatherMonthly(
     growth,
     items,
     weakWords,
+    approvedAt: joinDay,
+    joinedThisMonth,
+    beforeJoinCount,
   };
 }

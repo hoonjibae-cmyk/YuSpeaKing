@@ -26,7 +26,7 @@ export default async function StudentMonthlyPage({
 
   const { data: student } = await db
     .from("students")
-    .select("id, name, number, class_id")
+    .select("id, name, number, class_id, approved_at")
     .eq("id", studentId)
     .single();
   if (!student) notFound();
@@ -39,7 +39,13 @@ export default async function StudentMonthlyPage({
     .single();
   if (!klass) notFound();
 
-  const data = await gatherMonthly(db, student.id, student.class_id, month);
+  const data = await gatherMonthly(
+    db,
+    student.id,
+    student.class_id,
+    month,
+    student.approved_at
+  );
 
   const { data: report } = await db
     .from("monthly_reports")
@@ -87,6 +93,19 @@ export default async function StudentMonthlyPage({
         <Stat label="성장" value={data.growth != null ? `${data.growth > 0 ? "+" : ""}${data.growth}` : "-"} sub={data.firstScore != null ? `${data.firstScore}→${data.lastScore}` : undefined} />
         <Stat label="취약단어" value={`${data.weakWords.length}개`} />
       </section>
+
+      {/* 신입생: 제출률이 등록 이후 과제 기준임을 알린다 */}
+      {(data.joinedThisMonth || data.beforeJoinCount > 0) && data.approvedAt && (
+        <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          🎒 {data.approvedAt} 등록
+          {data.joinedThisMonth ? " (이번 달 등록한 신입생)" : ""} · 제출률은{" "}
+          <b>등록 이후 출제된 과제</b>만으로 계산했어요
+          {data.beforeJoinCount > 0
+            ? ` (등록 전 과제 ${data.beforeJoinCount}개 제외)`
+            : ""}
+          . AI 초안도 이 점을 반영합니다.
+        </p>
+      )}
 
       {data.weakWords.length > 0 && (
         <p className="mt-2 text-sm text-slate-500">

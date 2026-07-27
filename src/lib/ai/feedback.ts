@@ -8,9 +8,15 @@ export interface TwoTierFeedback {
 }
 
 // Azure 발음 점수를 바탕으로 Claude 가 2단 피드백(학생용/교사용)을 생성
+export interface StudentContext {
+  approvedAt?: string | null; // 가입 승인일 (YYYY-MM-DD)
+  submissionCount?: number; // 이번 제출을 포함한 누적 제출 횟수
+}
+
 export async function generateFeedback(
   scores: AzureScores,
-  referenceText: string
+  referenceText: string,
+  context?: StudentContext
 ): Promise<TwoTierFeedback> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY 가 설정되지 않았습니다.");
@@ -42,10 +48,32 @@ studentFeedback (학생용):
 
 teacherFeedback (교사용):
 - 객관적·전문적. 정확도/유창성/완성도/억양 요약, 취약한 단어·음소, 지도 포인트.
-- 마지막에 "학부모 안내 문구 초안:" 한 단락(정중한 존댓말)을 포함.`;
+- 마지막에 "학부모 안내 문구 초안:" 한 단락(정중한 존댓말)을 포함.
+
+공통 주의:
+- 이번 녹음 1건의 점수만 주어진다. 과거 이력·제출률·성실도는 알 수 없으므로 절대 추측해
+  단정하지 말 것("그동안 자주 빠졌다", "제출률이 낮다" 같은 표현 금지).
+- 학생이 최근 등록한 신입생이면 적응 단계임을 감안해 환영과 첫걸음 격려를 담고,
+  이전 학습 이력이 있는 것처럼 말하지 않는다.`;
+
+  // 등록일 기준 재원 일수 — 신입생인지 판단해 톤을 맞추기 위한 맥락
+  const ctxLine = (() => {
+    if (!context?.approvedAt) return "";
+    const days = Math.floor(
+      (Date.now() - new Date(context.approvedAt).getTime()) / 86400000
+    );
+    const nth = context.submissionCount;
+    const isNew = days <= 30 || (nth != null && nth <= 3);
+    return `\n[학생 상황] 등록일 ${context.approvedAt} (재원 ${Math.max(
+      0,
+      days
+    )}일차)${nth != null ? ` · 누적 ${nth}번째 제출` : ""}${
+      isNew ? " ★최근 등록한 신입생 — 적응 단계임을 감안해 환영·격려 위주로" : ""
+    }`;
+  })();
 
   const user = `[지문]
-${referenceText}
+${referenceText}${ctxLine}
 
 [Azure 발음평가 점수 (0~100)]
 - 종합 발음(pronunciation): ${scores.pronunciation}

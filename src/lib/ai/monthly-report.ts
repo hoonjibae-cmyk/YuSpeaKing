@@ -27,6 +27,12 @@ export async function generateMonthlyReportDraft(
 - 아래 구성으로 자연스러운 문단 흐름(과한 이모지 금지):
   1) 인사 + 이번 달 총평 한두 문장
   2) 제출/참여 현황 (제출률)
+     · ★ 제출률은 '학생이 등록한 이후 출제된 과제'만으로 계산된 값이다. 등록 전 과제는
+       애초에 부여되지 않았으므로 절대 미제출로 언급하지 말 것.
+     · 이번 달에 등록한 신입생이면, 낮은 제출률이나 적은 과제 수를 문제 삼지 말고
+       '등록 후 시작 단계'라는 맥락으로 따뜻하게 서술한다(예: 합류 시점을 언급하며
+       적응과 첫걸음을 격려). 참여 독려는 다음 달 기대의 형태로만 부드럽게 담는다.
+     · 과제 수 자체가 적으면 그 사실을 감안해 단정적인 평가를 피한다.
   3) 발음 실력과 성장 (평균 점수, 첫 점수 대비 변화, 잘한 점)
   4) 개선하면 좋을 점 (취약 단어/발음, 구체적으로)
   5) 다음 달 지도 방향 및 가정 학습 제안
@@ -34,9 +40,22 @@ export async function generateMonthlyReportDraft(
 - 데이터가 부족하면(제출이 적으면) 참여 독려를 부드럽게 포함.
 - 출력은 리포트 본문 텍스트만. 머리말/코드블록/설명 금지.`;
 
+  const enrollLine = data.approvedAt
+    ? `[등록일] ${data.approvedAt}${
+        data.joinedThisMonth ? " ★이번 달에 등록한 신입생입니다" : ""
+      }${
+        data.beforeJoinCount > 0
+          ? ` (등록 전 출제된 과제 ${data.beforeJoinCount}개는 집계에서 제외됨 — 미제출로 언급 금지)`
+          : ""
+      }`
+    : "[등록일] 확인 불가";
+
   const user = `[학생] ${studentName}
 [기간] ${month}
-[제출 현황] 부여 과제 ${data.assigned}개 중 ${data.submitted}개 제출 (제출률 ${data.rate}%)
+${enrollLine}
+[제출 현황] 부여 과제 ${data.assigned}개 중 ${data.submitted}개 제출 (제출률 ${
+    data.rate
+  }%)${data.assigned === 0 ? " — 등록 이후 출제된 과제가 없습니다" : ""}
 [점수] 평균 ${data.avg ?? "N/A"}점 · 첫 점수 ${data.firstScore ?? "N/A"} → 최근 ${
     data.lastScore ?? "N/A"
   } (변화 ${data.growth ?? "N/A"})

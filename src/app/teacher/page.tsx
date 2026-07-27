@@ -35,7 +35,7 @@ export default async function TeacherDashboard({
     .select("coupon_goal, coupon_reward_text")
     .eq("id", effectiveId)
     .single();
-  const couponGoal = couponRow?.coupon_goal ?? 10;
+  const couponGoal = couponRow?.coupon_goal ?? 25;
   const couponRewardText = couponRow?.coupon_reward_text ?? "";
 
   // 반별 가입 승인 대기 수
@@ -130,6 +130,9 @@ export default async function TeacherDashboard({
             아래에서 정한 개수를 다 모으면 학생 화면에 상품 안내가 떠요. 학생이{" "}
             <b>데스크 선생님</b>께 화면을 보여드리고 상품을 받은 뒤, 데스크
             선생님이 <b>‘관리자 확인’</b> 버튼을 누르면 쿠폰함이 초기화돼요.
+            <br />
+            칭찬할 일이 있을 때는 반 화면의 학생 명단에서 <b>🎟️ 특별 쿠폰</b>을
+            직접 줄 수도 있어요.
           </p>
           <form action={saveCouponSettings} className="mt-4 space-y-3">
             <div className="flex flex-wrap items-center gap-2">

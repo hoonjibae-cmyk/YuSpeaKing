@@ -231,6 +231,28 @@ export async function saveCouponSettings(formData: FormData) {
   revalidatePath("/teacher");
 }
 
+// 선생님이 학생에게 보너스 쿠폰을 직접 주거나 회수한다 (delta: +1 / -1)
+export async function grantCoupon(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const delta = Number(formData.get("delta") || 0);
+  if (!studentId || !delta) redirect(`/teacher/classes/${classId}`);
+
+  // 담당 반 학생인지 확인 후 증감 (음수로 내려가지 않게)
+  const { data: s } = await db
+    .from("students")
+    .select("id, bonus_coupons")
+    .eq("id", studentId)
+    .eq("class_id", classId)
+    .single();
+  if (!s) redirect(`/teacher/classes/${classId}`);
+
+  const next = Math.max(0, (s.bonus_coupons ?? 0) + delta);
+  await db.from("students").update({ bonus_coupons: next }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // ---------- 학생 ----------
 
 export async function addStudent(formData: FormData) {

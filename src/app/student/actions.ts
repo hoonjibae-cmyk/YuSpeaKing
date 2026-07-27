@@ -199,7 +199,8 @@ export async function redeemCoupons() {
   const admin = createAdminClient();
   await admin
     .from("students")
-    .update({ coupons_reset_at: new Date().toISOString() })
+    // 자동 적립분은 기준 시각으로, 선생님이 준 보너스 쿠폰은 0으로 되돌린다
+    .update({ coupons_reset_at: new Date().toISOString(), bonus_coupons: 0 })
     .eq("id", session.studentId);
   revalidatePath("/student/home");
   redirect("/student/home?redeemed=1");

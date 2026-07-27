@@ -37,7 +37,7 @@ export default async function StudentHome({
         .eq("status", "approved"),
       admin
         .from("students")
-        .select("seen_badges, coupons_reset_at")
+        .select("seen_badges, coupons_reset_at, bonus_coupons")
         .eq("id", session.studentId)
         .single(),
       admin
@@ -53,6 +53,7 @@ export default async function StudentHome({
   const studentRow = studentRowRes.data as {
     seen_badges: string[] | null;
     coupons_reset_at: string | null;
+    bonus_coupons: number | null;
   } | null;
   const teacherSettings = (() => {
     const t = classRes.data?.teachers;
@@ -130,18 +131,22 @@ export default async function StudentHome({
   ).map((b) => ({ key: b.key, emoji: b.emoji, label: b.label }));
 
   // ---- 쿠폰함: 완성도 90% 이상으로 제출한 과제 1개당 쿠폰 1개 ----
-  const couponGoal = Math.max(1, teacherSettings?.coupon_goal ?? 10);
+  const couponGoal = Math.max(1, teacherSettings?.coupon_goal ?? 25);
   const rewardText = teacherSettings?.coupon_reward_text?.trim() || "";
   const resetAtMs = studentRow?.coupons_reset_at
     ? new Date(studentRow.coupons_reset_at).getTime()
     : 0;
-  const couponCount = (subs ?? []).filter((s) => {
+  // 과제 제출로 자동 적립된 쿠폰
+  const autoCoupons = (subs ?? []).filter((s) => {
     if (s.status !== "evaluated") return false;
     const comp = (s.azure_scores as AzureScores | null)?.completeness ?? null;
     if (comp == null || comp < 90) return false;
     const ts = s.created_at ? new Date(s.created_at as string).getTime() : 0;
     return ts > resetAtMs;
   }).length;
+  // 선생님이 직접 준 보너스 쿠폰
+  const bonusCoupons = Math.max(0, studentRow?.bonus_coupons ?? 0);
+  const couponCount = autoCoupons + bonusCoupons;
   const couponFull = couponCount >= couponGoal;
 
   return (
@@ -254,27 +259,49 @@ export default async function StudentHome({
         <p className="mt-1 text-[11px] text-amber-600">
           과제를 <b>완성도 90% 이상</b>으로 제출하면 쿠폰 1개가 쌓여요!
         </p>
-        <div className="mt-3 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-5 gap-1.5">
           {Array.from({ length: couponGoal }).map((_, i) => {
             const filled = i < couponCount;
+            // 자동 적립분을 먼저 채우고, 그 뒤가 선생님이 준 보너스 쿠폰
+            const isBonus = filled && i >= autoCoupons;
             return (
               <div
                 key={i}
-                className={`flex aspect-square items-center justify-center rounded-xl p-1 ${
-                  filled
-                    ? "border border-amber-300 bg-white shadow-sm"
-                    : "border border-dashed border-amber-300 bg-white/40"
+                title={isBonus ? "선생님이 주신 특별 쿠폰" : undefined}
+                className={`relative flex aspect-square items-center justify-center rounded-xl p-0.5 ${
+                  isBonus
+                    ? "border-2 border-violet-400 bg-violet-50 shadow-sm"
+                    : filled
+                      ? "border border-amber-300 bg-white shadow-sm"
+                      : "border border-dashed border-amber-300 bg-white/40"
                 }`}
               >
                 <Mascot
-                  index={i}
+                  index={i + Math.floor(i / 5)}
                   className={`h-full w-full ${
                     filled ? "" : "opacity-30 grayscale"
                   }`}
                 />
+                {isBonus && (
+                  <span className="absolute -right-1 -top-1 text-[11px] leading-none">
+                    ⭐
+                  </span>
+                )}
               </div>
             );
           })}
+        </div>
+
+        {/* 범례 */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-amber-700">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded border border-amber-300 bg-white" />
+            과제로 모은 쿠폰
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded border-2 border-violet-400 bg-violet-50" />
+            ⭐ 선생님이 주신 특별 쿠폰
+          </span>
         </div>
 
         {couponFull && (

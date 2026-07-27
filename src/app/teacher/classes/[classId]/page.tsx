@@ -12,6 +12,7 @@ import {
   updateAssignment,
   archiveClass,
   unarchiveClass,
+  grantCoupon,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
@@ -43,7 +44,9 @@ export default async function ClassDetailPage({
   const [{ data: students }, { data: assignments }] = await Promise.all([
     db
       .from("students")
-      .select("id, name, number, school, grade, username, status, created_at")
+      .select(
+        "id, name, number, school, grade, username, status, bonus_coupons, created_at"
+      )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
     db
@@ -63,6 +66,7 @@ export default async function ClassDetailPage({
     grade: string | null;
     username: string | null;
     status: string | null;
+    bonus_coupons: number | null;
   };
   const roster = (students ?? []) as Row[];
   const pending = roster.filter((s) => s.status === "pending");
@@ -256,7 +260,8 @@ export default async function ClassDetailPage({
               </li>
             )}
             {approved.map((s) => (
-              <li key={s.id} className="flex items-center justify-between px-4 py-2.5">
+              <li key={s.id} className="px-4 py-2.5">
+                <div className="flex items-center justify-between">
                 <span className="min-w-0">
                   <span className="inline-block w-8 text-slate-400">
                     {s.number ?? "-"}
@@ -286,9 +291,46 @@ export default async function ClassDetailPage({
                     </button>
                   </form>
                 </span>
+                </div>
+
+                {/* 보너스 쿠폰 지급 */}
+                <div className="mt-1.5 flex items-center gap-2 pl-8">
+                  <span className="text-xs text-slate-400">🎟️ 특별 쿠폰</span>
+                  <form action={grantCoupon}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <input type="hidden" name="delta" value="-1" />
+                    <button
+                      disabled={(s.bonus_coupons ?? 0) <= 0}
+                      className="h-6 w-6 rounded border border-slate-200 text-sm leading-none text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+                      title="특별 쿠폰 회수"
+                    >
+                      −
+                    </button>
+                  </form>
+                  <span className="min-w-4 text-center text-sm font-semibold text-violet-600 tabular-nums">
+                    {s.bonus_coupons ?? 0}
+                  </span>
+                  <form action={grantCoupon}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <input type="hidden" name="delta" value="1" />
+                    <button
+                      className="h-6 w-6 rounded border border-violet-300 bg-violet-50 text-sm leading-none text-violet-600 hover:bg-violet-100"
+                      title="특별 쿠폰 주기"
+                    >
+                      +
+                    </button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>
+          <p className="mt-2 text-[11px] text-slate-400">
+            🎟️ 특별 쿠폰은 과제 제출로 쌓이는 쿠폰과 별개로 선생님이 직접 주는
+            쿠폰이에요. 학생 쿠폰함에 <b className="text-violet-500">보라색 테두리</b>
+            로 표시됩니다.
+          </p>
 
         </section>
 

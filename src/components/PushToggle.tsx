@@ -15,10 +15,20 @@ function urlBase64ToUint8Array(base64: string): ArrayBuffer {
 
 type State = "loading" | "unsupported" | "ios-needs-install" | "off" | "on" | "denied";
 
-// 학생이 휴대폰 푸시 알림을 켜고 끄는 버튼.
-export default function PushToggle({ vapidKey }: { vapidKey: string }) {
+// 휴대폰 푸시 알림을 켜고 끄는 버튼.
+// parentToken 이 있으면 학부모용(로그인 없이 토큰으로 인증)으로 동작한다.
+export default function PushToggle({
+  vapidKey,
+  parentToken,
+  label = "🔔 공지 알림 받기",
+}: {
+  vapidKey: string;
+  parentToken?: string;
+  label?: string;
+}) {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
+  const api = parentToken ? "/api/push/parent" : "/api/push/subscribe";
 
   useEffect(() => {
     if (!vapidKey) return setState("unsupported");
@@ -61,10 +71,10 @@ export default function PushToggle({ vapidKey }: { vapidKey: string }) {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
-      const res = await fetch("/api/push/subscribe", {
+      const res = await fetch(api, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(sub.toJSON()),
+        body: JSON.stringify({ ...sub.toJSON(), token: parentToken }),
       });
       setState(res.ok ? "on" : "off");
     } catch {
@@ -80,10 +90,10 @@ export default function PushToggle({ vapidKey }: { vapidKey: string }) {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch("/api/push/subscribe", {
+        await fetch(api, {
           method: "DELETE",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
+          body: JSON.stringify({ endpoint: sub.endpoint, token: parentToken }),
         });
         await sub.unsubscribe();
       }
@@ -125,11 +135,7 @@ export default function PushToggle({ vapidKey }: { vapidKey: string }) {
           : "border-brand bg-brand-light text-brand hover:bg-blue-100"
       }`}
     >
-      {busy
-        ? "처리 중…"
-        : state === "on"
-          ? "🔔 공지 알림 켜짐 (끄기)"
-          : "🔔 공지 알림 받기"}
+      {busy ? "처리 중…" : state === "on" ? "🔔 공지 알림 켜짐 (끄기)" : label}
     </button>
   );
 }

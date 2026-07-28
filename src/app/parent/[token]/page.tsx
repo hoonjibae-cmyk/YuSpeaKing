@@ -4,6 +4,7 @@ import { CrownMark } from "@/components/Logo";
 import { todayKST } from "@/lib/date";
 import { getStudentNotices } from "@/lib/notices";
 import { currentMonth, monthRange } from "@/lib/monthly";
+import PushToggle from "@/components/PushToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -152,6 +153,13 @@ export default async function ParentViewPage({
           sub={avgPrev != null ? `지난달 ${avgPrev}점` : undefined}
         />
       </section>
+
+      {/* 공지 알림 받기 */}
+      <PushToggle
+        vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
+        parentToken={params.token}
+        label="🔔 학원 공지 알림 받기"
+      />
 
       {/* 공지 */}
       {notices.length > 0 && (

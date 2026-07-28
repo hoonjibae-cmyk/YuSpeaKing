@@ -274,10 +274,12 @@ export async function createNotice(formData: FormData) {
       author_id: notice.author_id,
     });
     const host = headers().get("host");
+    const origin = host ? `https://${host}` : "";
     await sendPushToStudents(audience, {
       title: `📢 ${title}`,
       body: body.slice(0, 120) || "새 공지가 등록되었어요",
-      url: host ? `https://${host}/student/notices` : "/student/notices",
+      studentUrl: origin ? `${origin}/student/notices` : "/student/notices",
+      origin,
     });
   } catch (e) {
     console.error("[공지] 푸시 발송 실패:", e);
@@ -326,6 +328,15 @@ export async function regenerateParentToken(formData: FormData) {
     .update({ parent_token: randomBytes(16).toString("hex") })
     .eq("id", studentId)
     .eq("class_id", classId);
+
+  // 이전 링크로 등록된 학부모 알림 구독도 함께 해지 (죽은 링크로 알림이 가지 않도록)
+  const admin = createAdminClient();
+  await admin
+    .from("push_subscriptions")
+    .delete()
+    .eq("student_id", studentId)
+    .eq("audience", "parent");
+
   revalidatePath(`/teacher/classes/${classId}`);
 }
 

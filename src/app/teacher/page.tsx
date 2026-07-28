@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
@@ -28,6 +29,14 @@ export default async function TeacherDashboard({
     .select("id", { count: "exact", head: true })
     .eq("teacher_id", effectiveId)
     .not("archived_at", "is", null);
+
+  // 받은 인수인계 요청 수 (내가 보낸 건 제외)
+  const { count: incomingTransfers } = await createAdminClient()
+    .from("transfer_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending")
+    .neq("requested_by", effectiveId)
+    .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`);
 
   // 쿠폰/보상 설정
   const { data: couponRow } = await db
@@ -66,6 +75,16 @@ export default async function TeacherDashboard({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/teacher/transfers"
+            className={`rounded-lg border px-3 py-1.5 text-sm ${
+              incomingTransfers
+                ? "border-amber-400 bg-amber-50 font-medium text-amber-700 hover:bg-amber-100"
+                : "border-slate-300 text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            🔀 인수인계{incomingTransfers ? ` (${incomingTransfers})` : ""}
+          </Link>
           <Link
             href="/teacher/notices"
             className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"

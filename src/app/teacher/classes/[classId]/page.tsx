@@ -14,8 +14,11 @@ import {
   unarchiveClass,
   grantCoupon,
   regenerateParentToken,
+  moveStudent,
+  requestClassTransfer,
 } from "../../actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import { createAdminClient } from "@/lib/supabase/admin";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -28,7 +31,12 @@ export default async function ClassDetailPage({
   searchParams,
 }: {
   params: { classId: string };
-  searchParams: { error?: string; pwreset?: string };
+  searchParams: {
+    error?: string;
+    pwreset?: string;
+    moved?: string;
+    requested?: string;
+  };
 }) {
   const { db, effectiveId, isImpersonating, actingName } =
     await getTeacherContext();
@@ -77,13 +85,25 @@ export default async function ClassDetailPage({
     .filter((s) => s.status !== "pending" && s.status !== "rejected")
     .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
 
-  // 이 선생님의 학생 가입 코드 + 반 목록(승인 시 반 변경용)
-  const [{ data: meRow }, { data: myClassesRaw }] = await Promise.all([
-    db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
-    db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
-  ]);
+  // 이 선생님의 학생 가입 코드 + 반 목록(승인 시 반 변경용) + 다른 선생님(인수인계용)
+  const [{ data: meRow }, { data: myClassesRaw }, { data: otherTeachersRaw }] =
+    await Promise.all([
+      db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
+      db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
+      createAdminClient()
+        .from("teachers")
+        .select("id, name, email")
+        .eq("status", "approved")
+        .neq("id", effectiveId)
+        .order("name"),
+    ]);
   const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;
   const myClasses = (myClassesRaw ?? []) as { id: string; name: string }[];
+  const otherTeachers = (otherTeachersRaw ?? []) as {
+    id: string;
+    name: string | null;
+    email: string;
+  }[];
 
   const today = todayKST();
 
@@ -144,6 +164,61 @@ export default async function ClassDetailPage({
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
           {decodeURIComponent(searchParams.error)}
         </p>
+      )}
+
+      {searchParams.moved && (
+        <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          ✅ {decodeURIComponent(searchParams.moved)} 학생을 이 반으로 옮겼어요.
+          제출 기록·점수·쿠폰도 그대로 따라왔습니다.
+        </p>
+      )}
+      {searchParams.requested && (
+        <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          📨 인수인계를 요청했어요. 상대 선생님이 수락하면 완료됩니다. (Slack으로
+          알림이 갔어요)
+        </p>
+      )}
+
+      {/* 반 담임 인수인계 */}
+      {!isArchived && otherTeachers.length > 0 && (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-600">
+            🔀 반 담임 인수인계
+          </summary>
+          <p className="mt-2 text-xs text-slate-500">
+            담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의 학생·과제·기록
+            전체가 그대로 넘어갑니다.
+          </p>
+          <form
+            action={requestClassTransfer}
+            className="mt-3 flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="classId" value={classId} />
+            <select
+              name="teacherId"
+              required
+              defaultValue=""
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            >
+              <option value="" disabled>
+                선생님 선택
+              </option>
+              {otherTeachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name || t.email} 선생님
+                </option>
+              ))}
+            </select>
+            <input type="hidden" name="direction" value="give" />
+            <span className="text-sm text-slate-500">에게 이 반을 넘기기</span>
+            <SubmitButton
+              pendingText="요청 중…"
+              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              인수인계 요청
+            </SubmitButton>
+          </form>
+        </details>
       )}
 
       {searchParams.pwreset &&
@@ -295,6 +370,52 @@ export default async function ClassDetailPage({
                   </form>
                 </span>
                 </div>
+
+                {/* 반 이동 / 인수인계 */}
+                <form
+                  action={moveStudent}
+                  className="mt-1.5 flex items-center gap-2 pl-8"
+                >
+                  <input type="hidden" name="classId" value={classId} />
+                  <input type="hidden" name="studentId" value={s.id} />
+                  <span className="shrink-0 text-xs text-slate-400">🔀 반 이동</span>
+                  <select
+                    name="target"
+                    required
+                    defaultValue=""
+                    className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-600 focus:border-brand focus:outline-none"
+                  >
+                    <option value="" disabled>
+                      옮길 곳 선택
+                    </option>
+                    {myClasses.filter((c) => c.id !== classId).length > 0 && (
+                      <optgroup label="내 반 (바로 이동)">
+                        {myClasses
+                          .filter((c) => c.id !== classId)
+                          .map((c) => (
+                            <option key={c.id} value={`class:${c.id}`}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    {otherTeachers.length > 0 && (
+                      <optgroup label="다른 선생님 (인수인계 요청)">
+                        {otherTeachers.map((t) => (
+                          <option key={t.id} value={`teacher:${t.id}`}>
+                            {t.name || t.email} 선생님
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <SubmitButton
+                    pendingText="처리 중…"
+                    className="shrink-0 whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+                  >
+                    이동
+                  </SubmitButton>
+                </form>
 
                 {/* 학부모 열람 링크 */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">

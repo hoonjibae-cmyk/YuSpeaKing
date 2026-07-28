@@ -10,6 +10,7 @@ import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
 import { getRole } from "@/lib/auth";
 import { resolveNoticeAudience } from "@/lib/notices";
 import { sendPushToStudents } from "@/lib/push";
+import { moveStudentToClass } from "@/lib/transfers";
 import { synthesizeSpeech } from "@/lib/ai/tts";
 import { normalizeVoice } from "@/lib/tts-voices";
 import { hashPassword } from "@/lib/student-session";
@@ -214,6 +215,277 @@ export async function unarchiveClass(formData: FormData) {
   revalidatePath("/teacher");
   revalidatePath("/teacher/archived");
   redirect("/teacher");
+}
+
+// ---------- 반 이동 / 인수인계 ----------
+
+// Slack 알림 대상 이메일 조회
+async function teacherContact(teacherId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("teachers")
+    .select("name, email, slack_email")
+    .eq("id", teacherId)
+    .maybeSingle();
+  return data as { name?: string; email?: string; slack_email?: string } | null;
+}
+
+async function notifyTeacherById(teacherId: string, text: string) {
+  try {
+    const t = await teacherContact(teacherId);
+    await notifyTeacher(t?.slack_email || t?.email, text);
+  } catch (e) {
+    console.error("[인수인계] Slack 알림 실패:", e);
+  }
+}
+
+function transfersUrl(): string {
+  const host = headers().get("host");
+  return host ? `https://${host}/teacher/transfers` : "/teacher/transfers";
+}
+
+// 학생 반 이동.
+//  target = "class:<id>"   → 내 다른 반으로 즉시 이동
+//  target = "teacher:<id>" → 다른 선생님께 인수인계 요청
+export async function moveStudent(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const target = String(formData.get("target") || "");
+  const back = `/teacher/classes/${classId}`;
+  if (!studentId || !target) redirect(back);
+
+  // 내 반 학생인지 확인
+  const { data: student } = await db
+    .from("students")
+    .select("id, name, class_id")
+    .eq("id", studentId)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (!student) redirect(back);
+
+  const [type, id] = target.split(":");
+
+  if (type === "class") {
+    // 같은 선생님 반 내 이동 — 바로 처리
+    const { data: dest } = await db
+      .from("classes")
+      .select("id, name")
+      .eq("id", id)
+      .eq("teacher_id", effectiveId)
+      .maybeSingle();
+    if (!dest) redirect(`${back}?error=${encodeURIComponent("옮길 반을 찾을 수 없어요")}`);
+    await moveStudentToClass(studentId, id);
+    revalidatePath(back);
+    revalidatePath(`/teacher/classes/${id}`);
+    redirect(`/teacher/classes/${id}?moved=${encodeURIComponent(student.name)}`);
+  }
+
+  if (type !== "teacher") redirect(back);
+
+  // 다른 선생님께 인수인계 요청
+  const admin = createAdminClient();
+  const { error } = await admin.from("transfer_requests").insert({
+    kind: "student",
+    student_id: studentId,
+    class_id: classId,
+    from_teacher_id: effectiveId,
+    to_teacher_id: id,
+    requested_by: effectiveId,
+  });
+  if (error) {
+    const msg =
+      error.code === "23505"
+        ? "이미 요청 중인 학생이에요"
+        : error.message || "요청에 실패했어요";
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+
+  const me = await teacherContact(effectiveId);
+  await notifyTeacherById(
+    id,
+    `🔀 유스피킹앱 학생 인수인계 요청\n` +
+      `• 학생: ${student.name}\n` +
+      `• 보내는 선생님: ${me?.name ?? "선생님"}\n` +
+      `👉 수락하러 가기: ${transfersUrl()}`
+  );
+
+  revalidatePath(back);
+  redirect(`${back}?requested=1`);
+}
+
+// 반 담임 인수인계 요청. direction: 'give'(내 반을 넘김) | 'take'(남의 반을 받음)
+export async function requestClassTransfer(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const otherTeacherId = String(formData.get("teacherId") || "");
+  const direction = String(formData.get("direction") || "give");
+  // 받아오기는 내 반이 아니므로 반 상세로 돌아갈 수 없다 → 인수인계 목록으로
+  const back =
+    direction === "give" ? `/teacher/classes/${classId}` : "/teacher/transfers";
+  // 넘길 때만 받을 선생님을 고른다. 받아올 때는 반의 현재 담임이 상대가 된다.
+  if (!classId || (direction === "give" && !otherTeacherId)) redirect(back);
+
+  const admin = createAdminClient();
+  const { data: klass } = await admin
+    .from("classes")
+    .select("id, name, teacher_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (!klass) redirect(back);
+
+  const give = direction === "give";
+  // give: 내가 현재 담임 → 상대에게 넘김 (otherTeacherId = 받을 선생님)
+  // take: 상대가 담임 → 내가 받음 (반의 현재 담임이 상대)
+  const fromTeacher = give ? effectiveId : klass.teacher_id;
+  const toTeacher = give ? otherTeacherId : effectiveId;
+
+  if (klass.teacher_id !== fromTeacher) {
+    redirect(`${back}?error=${encodeURIComponent("담임 정보가 바뀌었어요. 새로고침해 주세요")}`);
+  }
+  if (fromTeacher === toTeacher) redirect(back);
+
+  const { error } = await admin.from("transfer_requests").insert({
+    kind: "class",
+    class_id: classId,
+    from_teacher_id: fromTeacher,
+    to_teacher_id: toTeacher,
+    requested_by: effectiveId,
+  });
+  if (error) {
+    const msg =
+      error.code === "23505"
+        ? "이미 인수인계 요청 중인 반이에요"
+        : error.message || "요청에 실패했어요";
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+
+  const me = await teacherContact(effectiveId);
+  const counterparty = give ? toTeacher : fromTeacher;
+  await notifyTeacherById(
+    counterparty,
+    `🔀 유스피킹앱 반 인수인계 요청\n` +
+      `• 반: ${klass.name}\n` +
+      `• 요청: ${me?.name ?? "선생님"} 님이 ${
+        give ? "이 반의 담임을 넘기려고 합니다" : "이 반의 담임을 맡으려고 합니다"
+      }\n` +
+      `👉 수락하러 가기: ${transfersUrl()}`
+  );
+
+  revalidatePath(back);
+  redirect(`${back}?requested=1`);
+}
+
+// 요청 수락 — 상대편(요청자가 아닌 쪽)만 수락할 수 있다
+export async function acceptTransfer(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const requestId = String(formData.get("requestId") || "");
+  const targetClassId = String(formData.get("targetClassId") || "");
+  const back = "/teacher/transfers";
+  if (!requestId) redirect(back);
+
+  const admin = createAdminClient();
+  const { data: reqRow } = await admin
+    .from("transfer_requests")
+    .select(
+      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, status"
+    )
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!reqRow || reqRow.status !== "pending") redirect(back);
+
+  // 수락 권한: 요청을 보낸 사람이 아니면서, 당사자여야 한다
+  const involved =
+    reqRow.from_teacher_id === effectiveId || reqRow.to_teacher_id === effectiveId;
+  if (!involved || reqRow.requested_by === effectiveId) {
+    redirect(`${back}?error=${encodeURIComponent("수락 권한이 없어요")}`);
+  }
+
+  if (reqRow.kind === "student") {
+    // 받는 선생님의 반으로 이동
+    const { data: dest } = await admin
+      .from("classes")
+      .select("id, name")
+      .eq("id", targetClassId)
+      .eq("teacher_id", reqRow.to_teacher_id)
+      .maybeSingle();
+    if (!dest) {
+      redirect(`${back}?error=${encodeURIComponent("옮길 반을 선택해 주세요")}`);
+    }
+    await moveStudentToClass(reqRow.student_id as string, targetClassId);
+  } else {
+    // 반 담임 교체
+    await admin
+      .from("classes")
+      .update({ teacher_id: reqRow.to_teacher_id })
+      .eq("id", reqRow.class_id);
+  }
+
+  await admin
+    .from("transfer_requests")
+    .update({ status: "accepted", resolved_at: new Date().toISOString() })
+    .eq("id", requestId);
+
+  const me = await teacherContact(effectiveId);
+  await notifyTeacherById(
+    reqRow.requested_by,
+    `✅ 유스피킹앱 인수인계 완료\n` +
+      `${me?.name ?? "선생님"} 님이 요청을 수락했어요. ${
+        reqRow.kind === "student" ? "학생이" : "반이"
+      } 이동되었습니다.`
+  );
+
+  revalidatePath("/teacher");
+  revalidatePath(back);
+  redirect(`${back}?accepted=1`);
+}
+
+// 요청 거절 / 취소
+export async function resolveTransfer(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const requestId = String(formData.get("requestId") || "");
+  const action = String(formData.get("action") || "rejected");
+  const back = "/teacher/transfers";
+  if (!requestId) redirect(back);
+
+  const admin = createAdminClient();
+  const { data: reqRow } = await admin
+    .from("transfer_requests")
+    .select("id, from_teacher_id, to_teacher_id, requested_by, status")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!reqRow || reqRow.status !== "pending") redirect(back);
+
+  const involved =
+    reqRow.from_teacher_id === effectiveId || reqRow.to_teacher_id === effectiveId;
+  if (!involved) redirect(back);
+
+  // 취소는 보낸 사람만, 거절은 받은 사람만
+  const next =
+    action === "canceled"
+      ? reqRow.requested_by === effectiveId
+        ? "canceled"
+        : null
+      : reqRow.requested_by !== effectiveId
+        ? "rejected"
+        : null;
+  if (!next) redirect(back);
+
+  await admin
+    .from("transfer_requests")
+    .update({ status: next, resolved_at: new Date().toISOString() })
+    .eq("id", requestId);
+
+  if (next === "rejected") {
+    const me = await teacherContact(effectiveId);
+    await notifyTeacherById(
+      reqRow.requested_by,
+      `🚫 유스피킹앱 인수인계 요청이 거절되었어요\n${me?.name ?? "선생님"} 님이 요청을 거절했습니다.`
+    );
+  }
+
+  revalidatePath(back);
+  redirect(back);
 }
 
 // ---------- 공지사항 ----------

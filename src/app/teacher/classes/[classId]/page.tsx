@@ -13,7 +13,9 @@ import {
   archiveClass,
   unarchiveClass,
   grantCoupon,
+  regenerateParentToken,
 } from "../../actions";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -45,7 +47,7 @@ export default async function ClassDetailPage({
     db
       .from("students")
       .select(
-        "id, name, number, school, grade, username, status, bonus_coupons, created_at"
+        "id, name, number, school, grade, username, status, bonus_coupons, parent_token, created_at"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
@@ -67,6 +69,7 @@ export default async function ClassDetailPage({
     username: string | null;
     status: string | null;
     bonus_coupons: number | null;
+    parent_token: string | null;
   };
   const roster = (students ?? []) as Row[];
   const pending = roster.filter((s) => s.status === "pending");
@@ -291,6 +294,43 @@ export default async function ClassDetailPage({
                     </button>
                   </form>
                 </span>
+                </div>
+
+                {/* 학부모 열람 링크 */}
+                <div className="mt-1.5 flex items-center gap-2 pl-8">
+                  <span className="shrink-0 text-xs text-slate-400">👨‍👩‍👧 학부모</span>
+                  {s.parent_token ? (
+                    <>
+                      <input
+                        id={`plink-${s.id}`}
+                        readOnly
+                        value={`${base}/parent/${s.parent_token}`}
+                        className="min-w-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500"
+                      />
+                      <CopyButton
+                        targetId={`plink-${s.id}`}
+                        className="shrink-0 rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+                      />
+                    </>
+                  ) : (
+                    <span className="flex-1 text-[11px] text-slate-400">
+                      아직 링크가 없어요
+                    </span>
+                  )}
+                  <form action={regenerateParentToken} className="shrink-0">
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <ConfirmSubmitButton
+                      message={
+                        s.parent_token
+                          ? "링크를 새로 만들까요?\n\n기존에 학부모께 보낸 링크는 즉시 사용할 수 없게 됩니다."
+                          : "학부모 열람 링크를 만들까요?"
+                      }
+                      className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
+                    >
+                      {s.parent_token ? "재발급" : "발급"}
+                    </ConfirmSubmitButton>
+                  </form>
                 </div>
 
                 {/* 보너스 쿠폰 지급 */}

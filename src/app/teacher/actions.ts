@@ -314,6 +314,21 @@ export async function saveCouponSettings(formData: FormData) {
   revalidatePath("/teacher");
 }
 
+// 학부모 열람 링크 발급/재발급. 재발급하면 이전 링크는 즉시 무효가 된다.
+export async function regenerateParentToken(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  if (!studentId) redirect(`/teacher/classes/${classId}`);
+
+  await db
+    .from("students")
+    .update({ parent_token: randomBytes(16).toString("hex") })
+    .eq("id", studentId)
+    .eq("class_id", classId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // 선생님이 학생에게 보너스 쿠폰을 직접 주거나 회수한다 (delta: +1 / -1)
 export async function grantCoupon(formData: FormData) {
   const { db } = await getTeacherContext();
@@ -437,7 +452,11 @@ export async function approveStudent(formData: FormData) {
       .not("number", "is", null)
       .order("number", { ascending: false })
       .limit(1),
-    db.from("students").select("approved_at").eq("id", studentId).maybeSingle(),
+    db
+      .from("students")
+      .select("approved_at, parent_token")
+      .eq("id", studentId)
+      .maybeSingle(),
   ]);
   const number = Number(rows?.[0]?.number ?? 0) + 1;
 
@@ -448,6 +467,8 @@ export async function approveStudent(formData: FormData) {
   };
   // 최초 승인 시점만 기록 (재승인해도 원래 등록일은 유지)
   if (!current?.approved_at) update.approved_at = new Date().toISOString();
+  // 학부모 열람 링크 토큰 발급 (없을 때만)
+  if (!current?.parent_token) update.parent_token = randomBytes(16).toString("hex");
   if (name) update.name = name;
   if (school) update.school = school;
   if (grade) update.grade = grade;

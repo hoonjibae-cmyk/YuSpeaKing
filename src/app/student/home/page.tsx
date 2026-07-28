@@ -5,6 +5,7 @@ import { studentLogout, redeemCoupons } from "../actions";
 import { CrownMark } from "@/components/Logo";
 import { todayKST } from "@/lib/date";
 import type { AzureScores } from "@/lib/types";
+import { getStudentNotices } from "@/lib/notices";
 import BadgeCelebration from "@/components/BadgeCelebration";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { Mascot } from "@/components/Mascots";
@@ -17,6 +18,11 @@ export default async function StudentHome({
   const session = await requireStudent();
   const admin = createAdminClient();
   const today = todayKST();
+
+  // 공지 (안 읽은 개수 배지용)
+  const notices = await getStudentNotices(session.studentId, session.classId);
+  const unreadNotices = notices.filter((n) => !n.read).length;
+  const latestNotice = notices[0] ?? null;
 
   // 서로 독립적인 조회는 병렬로 (왕복 시간 단축)
   const [assignmentsRes, subsRes, studentCountRes, studentRowRes, classRes] =
@@ -186,6 +192,31 @@ export default async function StudentHome({
           </form>
         </div>
       </header>
+
+      {/* 공지사항 */}
+      {notices.length > 0 && (
+        <Link
+          href="/student/notices"
+          className={`mt-5 flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${
+            unreadNotices > 0
+              ? "border-brand/40 bg-brand-light text-brand hover:bg-blue-100"
+              : "border-slate-200 bg-slate-50 text-slate-500 hover:border-brand hover:text-brand"
+          }`}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0">📢</span>
+            <span className="truncate font-medium">{latestNotice?.title}</span>
+          </span>
+          <span className="ml-2 flex shrink-0 items-center gap-1.5 text-xs">
+            {unreadNotices > 0 && (
+              <span className="rounded-full bg-red-500 px-2 py-0.5 font-bold text-white">
+                {unreadNotices}
+              </span>
+            )}
+            공지 →
+          </span>
+        </Link>
+      )}
 
       {pastCount > 0 && (
         <Link

@@ -67,6 +67,12 @@ export default async function TeacherDashboard({
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href="/teacher/notices"
+            className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+          >
+            📢 공지사항
+          </Link>
+          <Link
             href="/manual/teacher"
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
           >

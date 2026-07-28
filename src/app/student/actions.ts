@@ -170,6 +170,20 @@ export async function studentLogout() {
   redirect("/student");
 }
 
+// ---------- 공지 읽음 처리 ----------
+export async function markNoticesRead(noticeIds: string[]) {
+  if (!Array.isArray(noticeIds) || noticeIds.length === 0) return;
+  const session = await getActiveStudent();
+  if (!session) return;
+  const admin = createAdminClient();
+  await admin.from("notice_reads").upsert(
+    noticeIds.map((id) => ({ notice_id: id, student_id: session.studentId })),
+    { onConflict: "notice_id,student_id" }
+  );
+  revalidatePath("/student/home");
+  revalidatePath("/student/notices");
+}
+
 // ---------- 성취 배지: 이미 축하 연출을 본 배지 기록 ----------
 export async function markBadgesSeen(keys: string[]) {
   if (!Array.isArray(keys) || keys.length === 0) return;

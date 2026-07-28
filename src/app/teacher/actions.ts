@@ -11,6 +11,7 @@ import { getRole } from "@/lib/auth";
 import { resolveNoticeAudience } from "@/lib/notices";
 import { sendPushToStudents } from "@/lib/push";
 import { moveStudentToClass } from "@/lib/transfers";
+import { todayKST } from "@/lib/date";
 import { synthesizeSpeech } from "@/lib/ai/tts";
 import { normalizeVoice } from "@/lib/tts-voices";
 import { hashPassword } from "@/lib/student-session";
@@ -252,7 +253,9 @@ export async function moveStudent(formData: FormData) {
   const classId = String(formData.get("classId") || "");
   const studentId = String(formData.get("studentId") || "");
   const target = String(formData.get("target") || "");
-  const back = `/teacher/classes/${classId}`;
+  // 이동일(비우면 오늘). 미래 날짜면 그 날짜에 자동 반영된다.
+  const effectiveDate = String(formData.get("effective_date") || "") || todayKST();
+  const back = `/teacher/move?classId=${classId}`;
   if (!studentId || !target) redirect(back);
 
   // 내 반 학생인지 확인
@@ -266,25 +269,51 @@ export async function moveStudent(formData: FormData) {
 
   const [type, id] = target.split(":");
 
+  const admin = createAdminClient();
+
   if (type === "class") {
-    // 같은 선생님 반 내 이동 — 바로 처리
+    // 같은 선생님 반 내 이동 — 요청 없이 처리
     const { data: dest } = await db
       .from("classes")
       .select("id, name")
       .eq("id", id)
       .eq("teacher_id", effectiveId)
       .maybeSingle();
-    if (!dest) redirect(`${back}?error=${encodeURIComponent("옮길 반을 찾을 수 없어요")}`);
-    await moveStudentToClass(studentId, id);
+    if (!dest) redirect(`${back}&error=${encodeURIComponent("옮길 반을 찾을 수 없어요")}`);
+
+    if (effectiveDate <= todayKST()) {
+      await moveStudentToClass(studentId, id);
+      revalidatePath(`/teacher/classes/${classId}`);
+      revalidatePath(`/teacher/classes/${id}`);
+      redirect(`${back}&moved=${encodeURIComponent(student.name)}`);
+    }
+
+    // 미래 날짜 → 예약
+    const { error: schedErr } = await admin.from("transfer_requests").insert({
+      kind: "student",
+      student_id: studentId,
+      class_id: classId,
+      target_class_id: id,
+      from_teacher_id: effectiveId,
+      to_teacher_id: effectiveId,
+      requested_by: effectiveId,
+      status: "accepted", // 같은 선생님이므로 승인 절차 없음
+      effective_date: effectiveDate,
+    });
+    if (schedErr) {
+      const msg =
+        schedErr.code === "23505"
+          ? "이미 이동이 예약된 학생이에요"
+          : schedErr.message || "예약에 실패했어요";
+      redirect(`${back}&error=${encodeURIComponent(msg)}`);
+    }
     revalidatePath(back);
-    revalidatePath(`/teacher/classes/${id}`);
-    redirect(`/teacher/classes/${id}?moved=${encodeURIComponent(student.name)}`);
+    redirect(`${back}&scheduled=${encodeURIComponent(effectiveDate)}`);
   }
 
   if (type !== "teacher") redirect(back);
 
   // 다른 선생님께 인수인계 요청
-  const admin = createAdminClient();
   const { error } = await admin.from("transfer_requests").insert({
     kind: "student",
     student_id: studentId,
@@ -292,13 +321,14 @@ export async function moveStudent(formData: FormData) {
     from_teacher_id: effectiveId,
     to_teacher_id: id,
     requested_by: effectiveId,
+    effective_date: effectiveDate,
   });
   if (error) {
     const msg =
       error.code === "23505"
         ? "이미 요청 중인 학생이에요"
         : error.message || "요청에 실패했어요";
-    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+    redirect(`${back}&error=${encodeURIComponent(msg)}`);
   }
 
   const me = await teacherContact(effectiveId);
@@ -307,11 +337,12 @@ export async function moveStudent(formData: FormData) {
     `🔀 유스피킹앱 학생 인수인계 요청\n` +
       `• 학생: ${student.name}\n` +
       `• 보내는 선생님: ${me?.name ?? "선생님"}\n` +
+      `• 이동 예정일: ${effectiveDate}\n` +
       `👉 수락하러 가기: ${transfersUrl()}`
   );
 
   revalidatePath(back);
-  redirect(`${back}?requested=1`);
+  redirect(`${back}&requested=1`);
 }
 
 // 반 담임 인수인계 요청. direction: 'give'(내 반을 넘김) | 'take'(남의 반을 받음)
@@ -345,12 +376,25 @@ export async function requestClassTransfer(formData: FormData) {
   }
   if (fromTeacher === toTeacher) redirect(back);
 
+  // 공동 관리 기간: 시작일을 넣으면 그 기간 동안 두 선생님이 함께 관리하고,
+  // 종료일(= 담임 변경일)에 새 담임에게 완전히 넘어간다.
+  const coteachStart = String(formData.get("coteach_start") || "") || null;
+  const effectiveDate =
+    String(formData.get("effective_date") || "") || todayKST();
+  if (coteachStart && coteachStart > effectiveDate) {
+    redirect(
+      `${back}?error=${encodeURIComponent("공동 관리 시작일은 담임 변경일보다 앞서야 해요")}`
+    );
+  }
+
   const { error } = await admin.from("transfer_requests").insert({
     kind: "class",
     class_id: classId,
     from_teacher_id: fromTeacher,
     to_teacher_id: toTeacher,
     requested_by: effectiveId,
+    effective_date: effectiveDate,
+    coteach_start: coteachStart,
   });
   if (error) {
     const msg =
@@ -369,6 +413,9 @@ export async function requestClassTransfer(formData: FormData) {
       `• 요청: ${me?.name ?? "선생님"} 님이 ${
         give ? "이 반의 담임을 넘기려고 합니다" : "이 반의 담임을 맡으려고 합니다"
       }\n` +
+      (coteachStart
+        ? `• 공동 관리: ${coteachStart} ~ ${effectiveDate}\n• 담임 변경일: ${effectiveDate}\n`
+        : `• 담임 변경일: ${effectiveDate}\n`) +
       `👉 수락하러 가기: ${transfersUrl()}`
   );
 
@@ -388,7 +435,7 @@ export async function acceptTransfer(formData: FormData) {
   const { data: reqRow } = await admin
     .from("transfer_requests")
     .select(
-      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, status"
+      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, status, effective_date, coteach_start"
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -401,8 +448,17 @@ export async function acceptTransfer(formData: FormData) {
     redirect(`${back}?error=${encodeURIComponent("수락 권한이 없어요")}`);
   }
 
+  const today = todayKST();
+  const effective = (reqRow.effective_date as string | null) || today;
+  const dueNow = effective <= today;
+
+  const update: Record<string, unknown> = {
+    status: "accepted",
+    resolved_at: new Date().toISOString(),
+  };
+
   if (reqRow.kind === "student") {
-    // 받는 선생님의 반으로 이동
+    // 받는 선생님의 반 확인 후 저장 (예약이면 그 날짜에 이 반으로 이동)
     const { data: dest } = await admin
       .from("classes")
       .select("id, name")
@@ -412,32 +468,54 @@ export async function acceptTransfer(formData: FormData) {
     if (!dest) {
       redirect(`${back}?error=${encodeURIComponent("옮길 반을 선택해 주세요")}`);
     }
-    await moveStudentToClass(reqRow.student_id as string, targetClassId);
+    update.target_class_id = targetClassId;
+    if (dueNow) {
+      await moveStudentToClass(reqRow.student_id as string, targetClassId);
+      update.applied_at = new Date().toISOString();
+    }
   } else {
-    // 반 담임 교체
-    await admin
-      .from("classes")
-      .update({ teacher_id: reqRow.to_teacher_id })
-      .eq("id", reqRow.class_id);
+    // 공동 관리 기간이 있으면 새 담임에게 기간 한정 권한을 준다
+    const coStart = reqRow.coteach_start as string | null;
+    if (coStart) {
+      await admin.from("class_coteachers").upsert(
+        {
+          class_id: reqRow.class_id,
+          teacher_id: reqRow.to_teacher_id,
+          starts_on: coStart,
+          ends_on: effective,
+        },
+        { onConflict: "class_id,teacher_id" }
+      );
+    }
+    if (dueNow) {
+      await admin
+        .from("classes")
+        .update({ teacher_id: reqRow.to_teacher_id })
+        .eq("id", reqRow.class_id);
+      await admin.from("class_coteachers").delete().eq("class_id", reqRow.class_id);
+      update.applied_at = new Date().toISOString();
+    }
   }
 
-  await admin
-    .from("transfer_requests")
-    .update({ status: "accepted", resolved_at: new Date().toISOString() })
-    .eq("id", requestId);
+  await admin.from("transfer_requests").update(update).eq("id", requestId);
 
   const me = await teacherContact(effectiveId);
+  const what = reqRow.kind === "student" ? "학생" : "반";
   await notifyTeacherById(
     reqRow.requested_by,
-    `✅ 유스피킹앱 인수인계 완료\n` +
-      `${me?.name ?? "선생님"} 님이 요청을 수락했어요. ${
-        reqRow.kind === "student" ? "학생이" : "반이"
-      } 이동되었습니다.`
+    `✅ 유스피킹앱 인수인계 수락\n` +
+      `${me?.name ?? "선생님"} 님이 요청을 수락했어요.\n` +
+      (dueNow
+        ? `${what} 이동이 완료되었습니다.`
+        : `${effective}에 ${what} 이동이 자동으로 적용됩니다.`) +
+      (reqRow.kind === "class" && reqRow.coteach_start
+        ? `\n공동 관리 기간: ${reqRow.coteach_start} ~ ${effective}`
+        : "")
   );
 
   revalidatePath("/teacher");
   revalidatePath(back);
-  redirect(`${back}?accepted=1`);
+  redirect(`${back}?accepted=${dueNow ? "1" : encodeURIComponent(effective)}`);
 }
 
 // 요청 거절 / 취소
@@ -451,30 +529,40 @@ export async function resolveTransfer(formData: FormData) {
   const admin = createAdminClient();
   const { data: reqRow } = await admin
     .from("transfer_requests")
-    .select("id, from_teacher_id, to_teacher_id, requested_by, status")
+    .select("id, class_id, from_teacher_id, to_teacher_id, requested_by, status, applied_at")
     .eq("id", requestId)
     .maybeSingle();
-  if (!reqRow || reqRow.status !== "pending") redirect(back);
+  // 이미 반영된 건은 되돌리지 않는다
+  if (!reqRow || reqRow.applied_at) redirect(back);
+  if (reqRow.status !== "pending" && reqRow.status !== "accepted") redirect(back);
 
   const involved =
     reqRow.from_teacher_id === effectiveId || reqRow.to_teacher_id === effectiveId;
   if (!involved) redirect(back);
 
-  // 취소는 보낸 사람만, 거절은 받은 사람만
+  // 대기 중: 취소는 보낸 사람만, 거절은 받은 사람만
+  // 예약 완료(accepted, 미적용): 당사자 누구나 취소 가능
   const next =
-    action === "canceled"
-      ? reqRow.requested_by === effectiveId
-        ? "canceled"
-        : null
-      : reqRow.requested_by !== effectiveId
-        ? "rejected"
-        : null;
+    reqRow.status === "accepted"
+      ? "canceled"
+      : action === "canceled"
+        ? reqRow.requested_by === effectiveId
+          ? "canceled"
+          : null
+        : reqRow.requested_by !== effectiveId
+          ? "rejected"
+          : null;
   if (!next) redirect(back);
 
   await admin
     .from("transfer_requests")
     .update({ status: next, resolved_at: new Date().toISOString() })
     .eq("id", requestId);
+
+  // 예약을 취소하면 공동 관리 권한도 함께 회수
+  if (reqRow.status === "accepted") {
+    await admin.from("class_coteachers").delete().eq("class_id", reqRow.class_id);
+  }
 
   if (next === "rejected") {
     const me = await teacherContact(effectiveId);

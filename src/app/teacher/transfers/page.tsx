@@ -5,6 +5,8 @@ import { acceptTransfer, resolveTransfer, requestClassTransfer } from "../action
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { todayKST } from "@/lib/date";
+import { applyDueTransfers } from "@/lib/transfers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,9 @@ interface Req {
   to_teacher_id: string;
   requested_by: string;
   created_at: string;
+  status: string;
+  effective_date: string | null;
+  coteach_start: string | null;
 }
 
 export default async function TransfersPage({
@@ -26,26 +31,34 @@ export default async function TransfersPage({
 }) {
   const { effectiveId, isImpersonating, actingName } = await getTeacherContext();
   const admin = createAdminClient();
+  const today = todayKST();
+
+  // 적용일이 된 예약 이동을 먼저 반영 (여러 번 호출돼도 안전)
+  await applyDueTransfers();
 
   const { data: rows } = await admin
     .from("transfer_requests")
     .select(
-      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, created_at"
+      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, created_at, status, effective_date, coteach_start"
     )
-    .eq("status", "pending")
+    .in("status", ["pending", "accepted"])
+    .is("applied_at", null)
     .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`)
     .order("created_at", { ascending: false });
 
-  const list = (rows ?? []) as Req[];
+  const all = (rows ?? []) as Req[];
+  const list = all.filter((r) => r.status === "pending");
   const incoming = list.filter((r) => r.requested_by !== effectiveId);
   const outgoing = list.filter((r) => r.requested_by === effectiveId);
+  // 수락은 됐지만 적용일이 아직 오지 않은 예약 건
+  const scheduled = all.filter((r) => r.status === "accepted");
 
   // 표시에 필요한 이름들 한 번에 조회
   const teacherIds = Array.from(
-    new Set(list.flatMap((r) => [r.from_teacher_id, r.to_teacher_id]))
+    new Set(all.flatMap((r) => [r.from_teacher_id, r.to_teacher_id]))
   );
-  const studentIds = list.map((r) => r.student_id).filter(Boolean) as string[];
-  const classIds = list.map((r) => r.class_id);
+  const studentIds = all.map((r) => r.student_id).filter(Boolean) as string[];
+  const classIds = all.map((r) => r.class_id);
 
   const [{ data: teachers }, { data: students }, { data: classes }, { data: myClasses }] =
     await Promise.all([
@@ -167,6 +180,26 @@ export default async function TransfersPage({
                 </option>
               ))}
             </select>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              공동 관리 시작일 (선택)
+              <input
+                type="date"
+                name="coteach_start"
+                min={today}
+                className="rounded border border-slate-300 px-2 py-1"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              담임 변경일
+              <input
+                type="date"
+                name="effective_date"
+                defaultValue={today}
+                min={today}
+                required
+                className="rounded border border-slate-300 px-2 py-1"
+              />
+            </label>
             <SubmitButton
               pendingText="요청 중…"
               className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
@@ -175,6 +208,47 @@ export default async function TransfersPage({
             </SubmitButton>
           </form>
         </details>
+      )}
+
+      {/* 예정된 이동 */}
+      {scheduled.length > 0 && (
+        <section className="mt-8">
+          <h2 className="font-semibold">🗓️ 예정된 이동 ({scheduled.length})</h2>
+          <div className="mt-3 space-y-3">
+            {scheduled.map((r) => {
+              const d = describe(r);
+              return (
+                <article
+                  key={r.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-800">{d.title}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">{d.detail}</div>
+                    <div className="mt-1 text-[11px] font-medium text-amber-700">
+                      {r.effective_date}에 자동으로 적용돼요
+                      {r.coteach_start
+                        ? ` · 공동 관리 ${r.coteach_start} ~ ${r.effective_date}`
+                        : ""}
+                    </div>
+                  </div>
+                  <form action={resolveTransfer} className="shrink-0">
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <input type="hidden" name="action" value="canceled" />
+                    <ConfirmSubmitButton
+                      message={
+                        "예정된 이동을 취소할까요?\n\n공동 관리 권한도 함께 회수됩니다."
+                      }
+                      className="text-xs text-slate-500 hover:text-red-500"
+                    >
+                      예약 취소
+                    </ConfirmSubmitButton>
+                  </form>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* 받은 요청 */}

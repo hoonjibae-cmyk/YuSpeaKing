@@ -14,7 +14,6 @@ import {
   unarchiveClass,
   grantCoupon,
   regenerateParentToken,
-  moveStudent,
   requestClassTransfer,
 } from "../../actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
@@ -25,6 +24,7 @@ import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 import { todayKST } from "@/lib/date";
+import { coTaughtClassIds } from "@/lib/transfers";
 
 export default async function ClassDetailPage({
   params,
@@ -44,11 +44,14 @@ export default async function ClassDetailPage({
 
   const { data: klass } = await db
     .from("classes")
-    .select("id, name, class_code, archived_at")
+    .select("id, name, class_code, archived_at, teacher_id")
     .eq("id", classId)
-    .eq("teacher_id", effectiveId)
-    .single();
-  if (!klass) notFound();
+    .maybeSingle();
+
+  // 담임이거나, 인수인계 공동 관리 기간 중인 선생님만 접근 가능
+  const coIds = await coTaughtClassIds(effectiveId);
+  const isCoTeacher = klass ? klass.teacher_id !== effectiveId : false;
+  if (!klass || (isCoTeacher && !coIds.includes(classId))) notFound();
   const isArchived = !!klass.archived_at;
 
   const [{ data: students }, { data: assignments }] = await Promise.all([
@@ -153,6 +156,13 @@ export default async function ClassDetailPage({
         )}
       </header>
 
+      {isCoTeacher && (
+        <p className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-700">
+          🤝 <b>인수인계 공동 관리 기간</b>이에요. 기존 담임 선생님과 함께 이 반을
+          관리할 수 있고, 담임 변경일이 지나면 정식으로 이 반의 담임이 됩니다.
+        </p>
+      )}
+
       {isArchived && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
           이 반은 <b>보관 중</b>이에요. 반 목록에는 보이지 않지만 데이터는
@@ -180,7 +190,7 @@ export default async function ClassDetailPage({
       )}
 
       {/* 반 담임 인수인계 */}
-      {!isArchived && otherTeachers.length > 0 && (
+      {!isArchived && !isCoTeacher && otherTeachers.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-600">
             🔀 반 담임 인수인계
@@ -189,34 +199,60 @@ export default async function ClassDetailPage({
             담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의 학생·과제·기록
             전체가 그대로 넘어갑니다.
           </p>
-          <form
-            action={requestClassTransfer}
-            className="mt-3 flex flex-wrap items-center gap-2"
-          >
+          <form action={requestClassTransfer} className="mt-3 space-y-2">
             <input type="hidden" name="classId" value={classId} />
-            <select
-              name="teacherId"
-              required
-              defaultValue=""
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
-            >
-              <option value="" disabled>
-                선생님 선택
-              </option>
-              {otherTeachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name || t.email} 선생님
-                </option>
-              ))}
-            </select>
             <input type="hidden" name="direction" value="give" />
-            <span className="text-sm text-slate-500">에게 이 반을 넘기기</span>
-            <SubmitButton
-              pendingText="요청 중…"
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-            >
-              인수인계 요청
-            </SubmitButton>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                name="teacherId"
+                required
+                defaultValue=""
+                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+              >
+                <option value="" disabled>
+                  선생님 선택
+                </option>
+                {otherTeachers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name || t.email} 선생님
+                  </option>
+                ))}
+              </select>
+              <span className="text-sm text-slate-500">에게 이 반을 넘기기</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500">
+              <label className="flex items-center gap-1">
+                공동 관리 시작일 (선택)
+                <input
+                  type="date"
+                  name="coteach_start"
+                  min={today}
+                  className="rounded border border-slate-300 px-2 py-1"
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                담임 변경일
+                <input
+                  type="date"
+                  name="effective_date"
+                  defaultValue={today}
+                  min={today}
+                  required
+                  className="rounded border border-slate-300 px-2 py-1"
+                />
+              </label>
+              <SubmitButton
+                pendingText="요청 중…"
+                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+              >
+                인수인계 요청
+              </SubmitButton>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              공동 관리 시작일을 넣으면 그날부터 <b>담임 변경일까지 두 선생님이 함께</b>{" "}
+              반을 관리하고, 담임 변경일에 완전히 넘어갑니다. 비워 두면 담임 변경일에
+              바로 바뀝니다.
+            </p>
           </form>
         </details>
       )}
@@ -370,52 +406,6 @@ export default async function ClassDetailPage({
                   </form>
                 </span>
                 </div>
-
-                {/* 반 이동 / 인수인계 */}
-                <form
-                  action={moveStudent}
-                  className="mt-1.5 flex items-center gap-2 pl-8"
-                >
-                  <input type="hidden" name="classId" value={classId} />
-                  <input type="hidden" name="studentId" value={s.id} />
-                  <span className="shrink-0 text-xs text-slate-400">🔀 반 이동</span>
-                  <select
-                    name="target"
-                    required
-                    defaultValue=""
-                    className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-600 focus:border-brand focus:outline-none"
-                  >
-                    <option value="" disabled>
-                      옮길 곳 선택
-                    </option>
-                    {myClasses.filter((c) => c.id !== classId).length > 0 && (
-                      <optgroup label="내 반 (바로 이동)">
-                        {myClasses
-                          .filter((c) => c.id !== classId)
-                          .map((c) => (
-                            <option key={c.id} value={`class:${c.id}`}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    )}
-                    {otherTeachers.length > 0 && (
-                      <optgroup label="다른 선생님 (인수인계 요청)">
-                        {otherTeachers.map((t) => (
-                          <option key={t.id} value={`teacher:${t.id}`}>
-                            {t.name || t.email} 선생님
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                  <SubmitButton
-                    pendingText="처리 중…"
-                    className="shrink-0 whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-                  >
-                    이동
-                  </SubmitButton>
-                </form>
 
                 {/* 학부모 열람 링크 */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">

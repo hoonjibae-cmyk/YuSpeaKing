@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { applyDueTransfers, coTaughtClassIds } from "@/lib/transfers";
 import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
@@ -16,12 +17,20 @@ export default async function TeacherDashboard({
     await getTeacherContext();
   const role = await getRole();
 
-  const { data: classes } = await db
+  // 내 반 + 공동 관리 중인 반
+  const coIds = await coTaughtClassIds(effectiveId);
+  const classesQuery = db
     .from("classes")
-    .select("id, name, class_code, created_at, students(count), assignments(count)")
-    .eq("teacher_id", effectiveId)
+    .select(
+      "id, name, class_code, teacher_id, created_at, students(count), assignments(count)"
+    )
     .is("archived_at", null)
     .order("created_at", { ascending: false });
+  const { data: classes } = await (coIds.length
+    ? classesQuery.or(
+        `teacher_id.eq.${effectiveId},id.in.(${coIds.join(",")})`
+      )
+    : classesQuery.eq("teacher_id", effectiveId));
 
   // 보관된 반 개수 (보관반 목록 진입용)
   const { count: archivedCount } = await db
@@ -29,6 +38,9 @@ export default async function TeacherDashboard({
     .select("id", { count: "exact", head: true })
     .eq("teacher_id", effectiveId)
     .not("archived_at", "is", null);
+
+  // 적용일이 된 예약 이동을 반영 (크론이 돌기 전이라도 즉시 맞춰진다)
+  await applyDueTransfers();
 
   // 받은 인수인계 요청 수 (내가 보낸 건 제외)
   const { count: incomingTransfers } = await createAdminClient()
@@ -75,6 +87,12 @@ export default async function TeacherDashboard({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/teacher/move"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            🔀 반 이동
+          </Link>
           <Link
             href="/teacher/transfers"
             className={`rounded-lg border px-3 py-1.5 text-sm ${
@@ -214,6 +232,11 @@ export default async function TeacherDashboard({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{c.name}</span>
+                  {c.teacher_id !== effectiveId && (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+                      🤝 공동 관리 중
+                    </span>
+                  )}
                   {(pendingByClass.get(c.id) ?? 0) > 0 && (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                       가입 신청 {pendingByClass.get(c.id)}

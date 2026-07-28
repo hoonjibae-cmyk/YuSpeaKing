@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { applyDueTransfers } from "@/lib/transfers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,14 @@ export async function GET(req: Request) {
     }
   }
 
+  // 적용일이 된 반/학생 이동 예약을 반영 (선생님이 접속하지 않아도 진행되도록)
+  let transfersApplied = 0;
+  try {
+    transfersApplied = await applyDueTransfers();
+  } catch (e) {
+    console.error("[크론] 예약 이동 적용 실패:", e);
+  }
+
   const admin = createAdminClient();
   const cutoff = new Date(
     Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
@@ -34,7 +43,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!old || old.length === 0) {
-    return NextResponse.json({ ok: true, deleted: 0 });
+    return NextResponse.json({ ok: true, deleted: 0, transfersApplied });
   }
 
   // 스토리지 파일 삭제
@@ -50,5 +59,5 @@ export async function GET(req: Request) {
     .update({ audio_expired: true })
     .in("id", ids);
 
-  return NextResponse.json({ ok: true, deleted: ids.length });
+  return NextResponse.json({ ok: true, deleted: ids.length, transfersApplied });
 }

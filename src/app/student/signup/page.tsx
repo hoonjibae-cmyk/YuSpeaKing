@@ -38,6 +38,12 @@ export default async function StudentSignupPage({
           <span className="text-2xl font-bold text-brand">유스피킹</span>
         </Link>
         <div className="rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm">
+          {/* 혹시 오류 메시지를 들고 왔다면 그것부터 보여준다 */}
+          {searchParams.error && (
+            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+              {decodeURIComponent(searchParams.error)}
+            </p>
+          )}
           <div className="text-3xl">🔗</div>
           <h1 className="mt-2 text-lg font-semibold">가입 링크를 확인해 주세요</h1>
           <p className="mt-2 text-sm text-slate-500">

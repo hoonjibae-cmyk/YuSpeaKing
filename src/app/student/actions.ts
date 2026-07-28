@@ -31,21 +31,21 @@ export async function studentSignup(formData: FormData) {
   const back = signupCode
     ? `/student/signup?t=${encodeURIComponent(signupCode)}`
     : "/student/signup";
+  // back 에 이미 ?t= 가 붙어 있으므로 구분자를 맞춰야 한다.
+  // (그렇지 않으면 ?t=CODE?error=... 가 되어 가입 링크가 깨진다)
+  const backWithError = (msg: string) =>
+    `${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`;
   if (!name || !school || !grade || !classId) {
-    redirect(`${back}?error=${encodeURIComponent("모든 항목을 입력해 주세요")}`);
+    redirect(backWithError("모든 항목을 입력해 주세요"));
   }
   if (!USERNAME_RE.test(username)) {
-    redirect(
-      `${back}?error=${encodeURIComponent(
-        "아이디는 영문·숫자 4~20자로 만들어 주세요"
-      )}`
-    );
+    redirect(backWithError("아이디는 영문·숫자 4~20자로 만들어 주세요"));
   }
   if (password.length < 4) {
-    redirect(`${back}?error=${encodeURIComponent("비밀번호는 4자 이상이에요")}`);
+    redirect(backWithError("비밀번호는 4자 이상이에요"));
   }
   if (password !== passwordConfirm) {
-    redirect(`${back}?error=${encodeURIComponent("비밀번호가 서로 달라요")}`);
+    redirect(backWithError("비밀번호가 서로 달라요"));
   }
 
   const admin = createAdminClient();
@@ -57,12 +57,10 @@ export async function studentSignup(formData: FormData) {
     .eq("id", classId)
     .single();
   if (!klass) {
-    redirect(`${back}?error=${encodeURIComponent("수강반을 선택해 주세요")}`);
+    redirect(backWithError("수강반을 선택해 주세요"));
   }
   if (klass.archived_at) {
-    redirect(
-      `${back}?error=${encodeURIComponent("보관된 반은 신청할 수 없어요. 선생님께 문의해 주세요")}`
-    );
+    redirect(backWithError("보관된 반은 신청할 수 없어요. 선생님께 문의해 주세요"));
   }
 
   // 가입 링크(선생님)와 선택한 반의 담당 선생님이 일치하는지 확인
@@ -73,9 +71,7 @@ export async function studentSignup(formData: FormData) {
       .eq("signup_code", signupCode)
       .maybeSingle();
     if (!linkTeacher || linkTeacher.id !== klass.teacher_id) {
-      redirect(
-        `${back}?error=${encodeURIComponent("수강반 정보가 올바르지 않아요")}`
-      );
+      redirect(backWithError("수강반 정보가 올바르지 않아요"));
     }
   }
 
@@ -94,7 +90,7 @@ export async function studentSignup(formData: FormData) {
       error.code === "23505"
         ? "이미 사용 중인 아이디예요"
         : error.message || "가입 신청에 실패했어요";
-    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+    redirect(backWithError(msg));
   }
 
   // 담당 선생님에게 Slack DM (best-effort)

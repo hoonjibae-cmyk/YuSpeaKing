@@ -8,6 +8,10 @@ import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 
+// 헤더 메뉴 버튼 공통 스타일 (모바일에서 글자가 쪼개지지 않도록 nowrap)
+const navBtn =
+  "whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[13px] sm:px-3 sm:text-sm";
+
 export default async function TeacherDashboard({
   searchParams,
 }: {
@@ -76,65 +80,71 @@ export default async function TeacherDashboard({
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CrownMark className="h-9 w-9" />
-          <div>
-            <h1 className="text-2xl font-bold text-brand">유스피킹 · 선생님</h1>
-            <p className="text-sm text-slate-500">
-              {isImpersonating ? `${actingName} 선생님` : "내 반 관리"}
-            </p>
+      {/* 좁은 화면에서 제목과 메뉴가 겹치지 않도록 두 줄로 나눈다 */}
+      <header className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CrownMark className="h-9 w-9 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="whitespace-nowrap text-xl font-bold text-brand sm:text-2xl">
+                유스피킹 · 선생님
+              </h1>
+              <p className="truncate text-sm text-slate-500">
+                {isImpersonating ? `${actingName} 선생님` : "내 반 관리"}
+              </p>
+            </div>
           </div>
+          <form action={signOut} className="shrink-0">
+            <button className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}>
+              로그아웃
+            </button>
+          </form>
         </div>
-        <div className="flex items-center gap-2">
+
+        <nav className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/teacher/notices"
+            className={`${navBtn} border-brand bg-brand-light font-medium text-brand hover:bg-blue-100`}
+          >
+            📢 공지사항
+          </Link>
           <Link
             href="/teacher/move"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+            className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           >
             🔀 반 이동
           </Link>
           <Link
             href="/teacher/transfers"
-            className={`rounded-lg border px-3 py-1.5 text-sm ${
+            className={`${navBtn} ${
               incomingTransfers
                 ? "border-amber-400 bg-amber-50 font-medium text-amber-700 hover:bg-amber-100"
                 : "border-slate-300 text-slate-600 hover:bg-slate-100"
             }`}
           >
-            🔀 인수인계{incomingTransfers ? ` (${incomingTransfers})` : ""}
-          </Link>
-          <Link
-            href="/teacher/notices"
-            className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
-          >
-            📢 공지사항
-          </Link>
-          <Link
-            href="/manual/teacher"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-          >
-            📘 사용 설명서
+            🤝 인수인계{incomingTransfers ? ` ${incomingTransfers}` : ""}
           </Link>
           <Link
             href="/teacher/archived"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+            className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           >
-            🗂️ 보관반{archivedCount ? ` (${archivedCount})` : ""}
+            🗂️ 보관반{archivedCount ? ` ${archivedCount}` : ""}
+          </Link>
+          <Link
+            href="/manual/teacher"
+            className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+          >
+            📘 설명서
           </Link>
           {role === "admin" && !isImpersonating && (
             <Link
               href="/admin"
-              className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+              className={`${navBtn} border-brand bg-brand-light font-medium text-brand hover:bg-blue-100`}
             >
-              운영자 대시보드
+              🏛️ 운영자
             </Link>
           )}
-          <form action={signOut}>
-            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
-              로그아웃
-            </button>
-          </form>
-        </div>
+        </nav>
       </header>
 
       {searchParams.error && (

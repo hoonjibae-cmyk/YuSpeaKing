@@ -123,12 +123,12 @@ export default async function ClassDetailPage({
         ← 반 목록
       </Link>
 
-      <header className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{klass.name}</h1>
+      <header className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="truncate text-xl font-bold sm:text-2xl">{klass.name}</h1>
           <Link
             href={`/teacher/classes/${classId}/monthly`}
-            className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+            className="whitespace-nowrap rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
           >
             📄 월말 리포트
           </Link>
@@ -138,7 +138,7 @@ export default async function ClassDetailPage({
             <input type="hidden" name="classId" value={classId} />
             <SubmitButton
               pendingText="복원 중…"
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+              className="whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
             >
               다시 불러오기
             </SubmitButton>
@@ -148,7 +148,7 @@ export default async function ClassDetailPage({
             <input type="hidden" name="classId" value={classId} />
             <SubmitButton
               pendingText="보관 중…"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+              className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
             >
               🗂️ 반 보관
             </SubmitButton>

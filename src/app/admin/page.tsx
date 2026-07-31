@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signOut } from "../teacher/actions";
@@ -14,6 +13,7 @@ import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
+import { appOrigin } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -179,9 +179,9 @@ export default async function AdminDashboard({
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const host = headers().get("host");
-  const teacherSignupUrl = host
-    ? `https://${host}/teacher/login?mode=signup`
+  const base = appOrigin();
+  const teacherSignupUrl = base
+    ? `${base}/teacher/login?mode=signup`
     : "/teacher/login?mode=signup";
 
   return (

@@ -3,7 +3,6 @@
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
@@ -19,6 +18,7 @@ import { notifyTeacher } from "@/lib/slack";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
+import { appOrigin } from "@/lib/app-url";
 
 // 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
 async function generateAndStoreSamples(
@@ -122,8 +122,7 @@ export async function signUp(formData: FormData) {
       .from("teachers")
       .select("email, slack_email")
       .eq("role", "admin");
-    const host = headers().get("host");
-    const approveUrl = host ? `https://${host}/admin` : "/admin";
+    const approveUrl = `${appOrigin()}/admin`;
     const text =
       `🧑‍🏫 유스피킹앱 선생님 가입 신청\n` +
       `• 이름: ${name}\n` +
@@ -241,8 +240,7 @@ async function notifyTeacherById(teacherId: string, text: string) {
 }
 
 function transfersUrl(): string {
-  const host = headers().get("host");
-  return host ? `https://${host}/teacher/transfers` : "/teacher/transfers";
+  return `${appOrigin()}/teacher/transfers`;
 }
 
 // 학생 반 이동.
@@ -633,8 +631,7 @@ export async function createNotice(formData: FormData) {
       class_id: notice.class_id,
       author_id: notice.author_id,
     });
-    const host = headers().get("host");
-    const origin = host ? `https://${host}` : "";
+    const origin = appOrigin();
     await sendPushToStudents(audience, {
       title: `📢 ${title}`,
       body: body.slice(0, 120) || "새 공지가 등록되었어요",

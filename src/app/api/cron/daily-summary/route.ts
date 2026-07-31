@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyTeacher } from "@/lib/slack";
+import { appOrigin } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
   }
 
   const admin = createAdminClient();
-  const origin = new URL(req.url).origin;
+  const origin = appOrigin(new URL(req.url).origin);
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const [teachersRes, classesRes, studentsRes, assignmentsRes] =

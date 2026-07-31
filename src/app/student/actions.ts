@@ -2,7 +2,6 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   setStudentSession,
@@ -12,6 +11,7 @@ import {
 } from "@/lib/student-session";
 import { getActiveStudent } from "@/lib/student-guard";
 import { notifyTeacher } from "@/lib/slack";
+import { appOrigin } from "@/lib/app-url";
 
 const USERNAME_RE = /^[a-zA-Z0-9._]{4,20}$/;
 
@@ -99,10 +99,7 @@ export async function studentSignup(formData: FormData) {
     (t as { email?: string; slack_email?: string } | null)?.slack_email ||
     (t as { email?: string } | null)?.email ||
     null;
-  const host = headers().get("host");
-  const approveUrl = host
-    ? `https://${host}/teacher/classes/${classId}`
-    : `/teacher/classes/${classId}`;
+  const approveUrl = `${appOrigin()}/teacher/classes/${classId}`;
   await notifyTeacher(
     teacherEmail,
     `🎓 유스피킹앱 신규 학생 가입 신청\n` +

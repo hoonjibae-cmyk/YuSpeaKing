@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { headers } from "next/headers";
 import { getTeacherContext } from "@/lib/teacher-context";
 import {
   deleteStudent,
@@ -25,6 +24,7 @@ import PassageComposer from "./PassageComposer";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 import { todayKST } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
+import { appOrigin } from "@/lib/app-url";
 
 export default async function ClassDetailPage({
   params,
@@ -110,8 +110,7 @@ export default async function ClassDetailPage({
 
   const today = todayKST();
 
-  const host = headers().get("host");
-  const base = host ? `https://${host}` : "";
+  const base = appOrigin();
   const signupUrl = signupCode
     ? `${base}/student/signup?t=${signupCode}`
     : `${base}/student/signup`;

@@ -280,18 +280,28 @@ export default async function ClassDetailPage({
             <div className="text-xs font-medium text-slate-500">
               학생 가입 신청 링크 (학생들에게 공유)
             </div>
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                id="signup-url"
-                readOnly
-                value={signupUrl}
-                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
-              />
-              <CopyButton
-                targetId="signup-url"
-                className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
-              />
-            </div>
+            {signupCode ? (
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  id="signup-url"
+                  readOnly
+                  value={signupUrl}
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+                />
+                <CopyButton
+                  targetId="signup-url"
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+                />
+              </div>
+            ) : (
+              // 가입 코드가 없으면 링크에 선생님 정보가 담기지 않아 학생이 가입할 수 없다.
+              // 깨진 링크를 나눠주는 대신 원인을 알린다.
+              <p className="mt-1 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                ⚠️ 아직 <b>가입 링크가 만들어지지 않았어요.</b> 이대로 공유하면
+                학생이 가입할 수 없습니다. 운영자에게 <b>가입 코드 발급</b>을
+                요청해 주세요.
+              </p>
+            )}
           </div>
 
           {/* 승인 대기 (정보 수정 후 승인 가능) */}

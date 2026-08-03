@@ -12,6 +12,7 @@ export interface TeacherContext {
   selfId: string; // 실제 로그인한 사용자 id
   isImpersonating: boolean;
   actingName: string | null; // 대행 중인 선생님 이름
+  role: string; // 'teacher' | 'admin' — 페이지에서 재조회하지 않도록 함께 반환
   db: DB; // 데이터 접근 클라이언트 (대행 시 admin, 아니면 RLS)
 }
 
@@ -23,25 +24,19 @@ export async function getTeacherContext(): Promise<TeacherContext> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/teacher/login");
 
+  // role 과 status 를 한 번에 읽는다 (따로 조회하면 왕복이 한 번 더 든다)
   const { data: me } = await supabase
     .from("teachers")
-    .select("role")
+    .select("role, status")
     .eq("id", user.id)
     .single();
-  const isAdmin = me?.role === "admin";
+  const role = (me?.role as string) ?? "teacher";
+  const isAdmin = role === "admin";
 
-  // 승인 상태 확인 (status 컬럼은 migration 009 이후 존재 — 별도 조회로 안전 처리)
-  if (!isAdmin) {
-    const { data: st } = await supabase
-      .from("teachers")
-      .select("status")
-      .eq("id", user.id)
-      .single();
-    if (st?.status && st.status !== "approved") {
-      redirect(
-        st.status === "rejected" ? "/teacher/pending?rejected=1" : "/teacher/pending"
-      );
-    }
+  if (!isAdmin && me?.status && me.status !== "approved") {
+    redirect(
+      me.status === "rejected" ? "/teacher/pending?rejected=1" : "/teacher/pending"
+    );
   }
 
   const impId = cookies().get(IMPERSONATE_COOKIE)?.value;
@@ -59,6 +54,7 @@ export async function getTeacherContext(): Promise<TeacherContext> {
       selfId: user.id,
       isImpersonating: true,
       actingName: target?.name || target?.email || "선생님",
+      role,
       db: admin,
     };
   }
@@ -68,6 +64,7 @@ export async function getTeacherContext(): Promise<TeacherContext> {
     selfId: user.id,
     isImpersonating: false,
     actingName: null,
+    role,
     db: supabase as unknown as DB,
   };
 }

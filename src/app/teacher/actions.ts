@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
-import { getRole } from "@/lib/auth";
 import { resolveNoticeAudience } from "@/lib/notices";
 import { sendPushToStudents } from "@/lib/push";
 import { moveStudentToClass } from "@/lib/transfers";
@@ -577,7 +576,7 @@ export async function resolveTransfer(formData: FormData) {
 // ---------- 공지사항 ----------
 
 export async function createNotice(formData: FormData) {
-  const { db, effectiveId } = await getTeacherContext();
+  const { db, effectiveId, role } = await getTeacherContext();
   const title = String(formData.get("title") || "").trim();
   const body = String(formData.get("body") || "").trim();
   const pinned = formData.get("pinned") === "on";
@@ -592,7 +591,7 @@ export async function createNotice(formData: FormData) {
   let classId: string | null = null;
   if (target === "all") {
     // 전체 공지는 운영자만
-    if ((await getRole()) !== "admin") {
+    if (role !== "admin") {
       redirect(
         `/teacher/notices?error=${encodeURIComponent("전체 공지는 운영자만 쓸 수 있어요")}`
       );

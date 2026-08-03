@@ -42,19 +42,22 @@ export default async function ClassDetailPage({
     await getTeacherContext();
   const { classId } = params;
 
-  const { data: klass } = await db
-    .from("classes")
-    .select("id, name, class_code, archived_at, teacher_id")
-    .eq("id", classId)
-    .maybeSingle();
-
-  // 담임이거나, 인수인계 공동 관리 기간 중인 선생님만 접근 가능
-  const coIds = await coTaughtClassIds(effectiveId);
-  const isCoTeacher = klass ? klass.teacher_id !== effectiveId : false;
-  if (!klass || (isCoTeacher && !coIds.includes(classId))) notFound();
-  const isArchived = !!klass.archived_at;
-
-  const [{ data: students }, { data: assignments }] = await Promise.all([
+  // 이 화면에 필요한 조회를 한꺼번에 (서로 의존하지 않는다)
+  const [
+    { data: klass },
+    coIds,
+    { data: students },
+    { data: assignments },
+    { data: meRow },
+    { data: myClassesRaw },
+    { data: otherTeachersRaw },
+  ] = await Promise.all([
+    db
+      .from("classes")
+      .select("id, name, class_code, archived_at, teacher_id")
+      .eq("id", classId)
+      .maybeSingle(),
+    coTaughtClassIds(effectiveId),
     db
       .from("students")
       .select(
@@ -69,7 +72,20 @@ export default async function ClassDetailPage({
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: false }),
+    db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
+    db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
+    createAdminClient()
+      .from("teachers")
+      .select("id, name, email")
+      .eq("status", "approved")
+      .neq("id", effectiveId)
+      .order("name"),
   ]);
+
+  // 담임이거나, 인수인계 공동 관리 기간 중인 선생님만 접근 가능
+  const isCoTeacher = klass ? klass.teacher_id !== effectiveId : false;
+  if (!klass || (isCoTeacher && !coIds.includes(classId))) notFound();
+  const isArchived = !!klass.archived_at;
 
   type Row = {
     id: string;
@@ -88,18 +104,6 @@ export default async function ClassDetailPage({
     .filter((s) => s.status !== "pending" && s.status !== "rejected")
     .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
 
-  // 이 선생님의 학생 가입 코드 + 반 목록(승인 시 반 변경용) + 다른 선생님(인수인계용)
-  const [{ data: meRow }, { data: myClassesRaw }, { data: otherTeachersRaw }] =
-    await Promise.all([
-      db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
-      db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
-      createAdminClient()
-        .from("teachers")
-        .select("id, name, email")
-        .eq("status", "approved")
-        .neq("id", effectiveId)
-        .order("name"),
-    ]);
   const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;
   const myClasses = (myClassesRaw ?? []) as { id: string; name: string }[];
   const otherTeachers = (otherTeachersRaw ?? []) as {

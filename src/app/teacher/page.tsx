@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { applyDueTransfers, coTaughtClassIds } from "@/lib/transfers";
@@ -17,12 +16,39 @@ export default async function TeacherDashboard({
 }: {
   searchParams: { error?: string };
 }) {
-  const { db, effectiveId, isImpersonating, actingName } =
+  const { db, effectiveId, role, isImpersonating, actingName } =
     await getTeacherContext();
-  const role = await getRole();
 
-  // 내 반 + 공동 관리 중인 반
-  const coIds = await coTaughtClassIds(effectiveId);
+  // 1단계 — 서로 의존하지 않는 조회는 한꺼번에 (순차로 하면 왕복이 그대로 쌓인다)
+  const [coIds, { count: archivedCount }, { count: incomingTransfers }, { data: couponRow }] =
+    await Promise.all([
+      coTaughtClassIds(effectiveId),
+      db
+        .from("classes")
+        .select("id", { count: "exact", head: true })
+        .eq("teacher_id", effectiveId)
+        .not("archived_at", "is", null),
+      // 받은 인수인계 요청 수 (내가 보낸 건 제외)
+      createAdminClient()
+        .from("transfer_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending")
+        .neq("requested_by", effectiveId)
+        .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`),
+      // 쿠폰/보상 설정
+      db
+        .from("teachers")
+        .select("coupon_goal, coupon_reward_text")
+        .eq("id", effectiveId)
+        .single(),
+      // 적용일이 된 예약 이동 반영 (결과를 기다릴 필요는 없지만 같이 태운다)
+      applyDueTransfers(),
+    ]);
+
+  const couponGoal = couponRow?.coupon_goal ?? 25;
+  const couponRewardText = couponRow?.coupon_reward_text ?? "";
+
+  // 2단계 — 내 반 + 공동 관리 중인 반 (coIds 가 있어야 한다)
   const classesQuery = db
     .from("classes")
     .select(
@@ -35,33 +61,6 @@ export default async function TeacherDashboard({
         `teacher_id.eq.${effectiveId},id.in.(${coIds.join(",")})`
       )
     : classesQuery.eq("teacher_id", effectiveId));
-
-  // 보관된 반 개수 (보관반 목록 진입용)
-  const { count: archivedCount } = await db
-    .from("classes")
-    .select("id", { count: "exact", head: true })
-    .eq("teacher_id", effectiveId)
-    .not("archived_at", "is", null);
-
-  // 적용일이 된 예약 이동을 반영 (크론이 돌기 전이라도 즉시 맞춰진다)
-  await applyDueTransfers();
-
-  // 받은 인수인계 요청 수 (내가 보낸 건 제외)
-  const { count: incomingTransfers } = await createAdminClient()
-    .from("transfer_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending")
-    .neq("requested_by", effectiveId)
-    .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`);
-
-  // 쿠폰/보상 설정
-  const { data: couponRow } = await db
-    .from("teachers")
-    .select("coupon_goal, coupon_reward_text")
-    .eq("id", effectiveId)
-    .single();
-  const couponGoal = couponRow?.coupon_goal ?? 25;
-  const couponRewardText = couponRow?.coupon_reward_text ?? "";
 
   // 반별 가입 승인 대기 수
   const classIds = (classes ?? []).map((c) => c.id);

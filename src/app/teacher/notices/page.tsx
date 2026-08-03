@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getRole } from "@/lib/auth";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createNotice, deleteNotice } from "../actions";
 import SubmitButton from "@/components/SubmitButton";
@@ -13,9 +12,8 @@ export default async function TeacherNoticesPage({
 }: {
   searchParams: { error?: string; posted?: string };
 }) {
-  const { db, effectiveId, isImpersonating, actingName } =
+  const { db, effectiveId, role, isImpersonating, actingName } =
     await getTeacherContext();
-  const role = await getRole();
 
   const [{ data: classes }, { data: notices }] = await Promise.all([
     db

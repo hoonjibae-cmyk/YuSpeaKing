@@ -30,6 +30,8 @@ export default async function ClassMonthlyPage({
     .from("students")
     .select("id, name, number")
     .eq("class_id", classId)
+    // 승인된 학생만 (승인 대기 학생은 제출 대상이 아니다)
+    .eq("status", "approved")
     .order("number");
 
   const ids = (students ?? []).map((s) => s.id);

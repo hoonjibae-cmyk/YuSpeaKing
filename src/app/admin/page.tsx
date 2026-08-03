@@ -66,7 +66,8 @@ export default async function AdminDashboard({
     await Promise.all([
       admin.from("teachers").select("id, name, email, role, status"),
       admin.from("classes").select("id, teacher_id").is("archived_at", null),
-      admin.from("students").select("id, class_id"),
+      // 승인된 학생만 — 승인 대기 학생이 제출률 분모에 섞이면 통계가 어긋난다
+      admin.from("students").select("id, class_id").eq("status", "approved"),
       admin.from("assignments").select("id, class_id, created_at"),
       admin.from("submissions").select("assignment_id, overall_score, status"),
     ]);

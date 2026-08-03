@@ -43,6 +43,9 @@ export default async function AssignmentDashboard({
       .from("students")
       .select("id, name, number")
       .eq("class_id", assignment.class_id)
+      // 승인된 학생만 집계. 승인 대기·거절 학생은 로그인 자체가 안 되므로
+      // 제출 대상이 아니고, 출석번호도 없어 목록이 어긋난다.
+      .eq("status", "approved")
       .order("number"),
     db
       .from("submissions")

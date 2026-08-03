@@ -29,6 +29,19 @@ export default async function StudentSignupPage({
   // 링크는 맞는데 선생님 승인이 아직 안 난 경우
   const teacherNotApproved = !!teacherRow && teacherRow.status !== "approved";
 
+  // 링크가 잘려서 코드 없이 들어온 경우, 막다른 길로 두지 않고
+  // 담당 선생님을 직접 고를 수 있게 한다. (카톡 등에서 ?t= 가 떨어져 나가는 일이 잦다)
+  const { data: pickableRaw } =
+    !teacher && !teacherNotApproved
+      ? await admin
+          .from("teachers")
+          .select("name, signup_code")
+          .eq("status", "approved")
+          .not("signup_code", "is", null)
+          .order("name")
+      : { data: null };
+  const pickable = (pickableRaw ?? []) as { name: string | null; signup_code: string }[];
+
   const inputCls =
     "w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none";
 
@@ -61,14 +74,32 @@ export default async function StudentSignupPage({
             </>
           ) : (
             <>
-              <div className="text-3xl">🔗</div>
+              <div className="text-3xl">👩‍🏫</div>
               <h1 className="mt-2 text-lg font-semibold">
-                가입 링크를 확인해 주세요
+                담당 선생님을 선택해 주세요
               </h1>
               <p className="mt-2 text-sm text-slate-500">
-                선생님께 받은 <b>가입 신청 링크</b>로 다시 접속해 주세요. 링크에는
-                담당 선생님 정보가 담겨 있어요.
+                링크에 선생님 정보가 담겨 있지 않아요. (메신저에서 주소가 잘린
+                경우가 많아요) 아래에서 <b>담당 선생님</b>을 고르면 계속할 수
+                있어요.
               </p>
+              {pickable.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {pickable.map((t) => (
+                    <Link
+                      key={t.signup_code}
+                      href={`/student/signup?t=${t.signup_code}`}
+                      className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-brand hover:bg-brand-light hover:text-brand"
+                    >
+                      {t.name || "선생님"} 선생님
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-400">
+                  선생님께 받은 <b>가입 신청 링크</b>로 다시 접속해 주세요.
+                </p>
+              )}
             </>
           )}
           <Link

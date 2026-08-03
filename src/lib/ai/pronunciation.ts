@@ -3,6 +3,9 @@ import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { AzureScores } from "../types";
 import { logUsage } from "../usage";
 
+// 인식 상한. Vercel Pro(최대 300초) 기준으로 넉넉히 잡아 긴 녹음도 끝까지 인식한다.
+const AZURE_TIMEOUT_MS = 180_000;
+
 type WordResult = { word: string; accuracy: number; errorType?: string };
 type Segment = {
   accuracy: number;
@@ -51,6 +54,7 @@ export async function assessPronunciation(
     const segments: Segment[] = [];
     const textParts: string[] = [];
     let settled = false;
+    let truncated = false; // 시간 제한에 걸려 인식이 끊겼는지
 
     const finish = (fn: () => void) => {
       if (settled) return;
@@ -71,15 +75,19 @@ export async function assessPronunciation(
       }
     };
 
-    // 안전장치: 무한 대기 방지.
-    // 함수 실행시간(60초) 안에서 피드백 생성까지 마쳐야 하므로 여유를 남긴다.
-    // 시간이 다 되면 그때까지 인식한 구간만으로 점수를 낸다.
+    // 안전장치: 무한 대기 방지. 긴 녹음도 끝까지 인식하도록 넉넉히 잡는다.
+    // (여기에 걸렸다는 건 인식이 도중에 끊겼다는 뜻이라 truncated 로 표시하고,
+    //  그 경우 완성도는 실제로 읽은 양이 아니므로 감점에 쓰지 않는다)
     const timer = setTimeout(() => {
+      truncated = true;
       finish(() => {
-        if (segments.length) resolve(aggregate(segments, textParts.join(" "), referenceText));
-        else reject(new Error("발음 평가 시간이 초과되었어요."));
+        if (segments.length) {
+          resolve(aggregate(segments, textParts.join(" "), referenceText, true));
+        } else {
+          reject(new Error("발음 평가 시간이 초과되었어요."));
+        }
       });
-    }, 35000);
+    }, AZURE_TIMEOUT_MS);
 
     recognizer.recognized = (_s, e) => {
       if (e.result.reason !== sdk.ResultReason.RecognizedSpeech) return;
@@ -113,8 +121,11 @@ export async function assessPronunciation(
         finish(() => reject(new Error(e.errorDetails || "발음 평가 실패")));
       } else {
         finish(() => {
-          if (segments.length) resolve(aggregate(segments, textParts.join(" "), referenceText));
-          else reject(new Error("음성을 인식하지 못했어요. 더 또렷하게 녹음해 주세요."));
+          if (segments.length) {
+            resolve(aggregate(segments, textParts.join(" "), referenceText, truncated));
+          } else {
+            reject(new Error("음성을 인식하지 못했어요. 더 또렷하게 녹음해 주세요."));
+          }
         });
       }
     };
@@ -122,8 +133,11 @@ export async function assessPronunciation(
     recognizer.sessionStopped = () => {
       clearTimeout(timer);
       finish(() => {
-        if (segments.length) resolve(aggregate(segments, textParts.join(" "), referenceText));
-        else reject(new Error("음성을 인식하지 못했어요. 더 또렷하게 녹음해 주세요."));
+        if (segments.length) {
+          resolve(aggregate(segments, textParts.join(" "), referenceText, truncated));
+        } else {
+          reject(new Error("음성을 인식하지 못했어요. 더 또렷하게 녹음해 주세요."));
+        }
       });
     };
 
@@ -146,7 +160,8 @@ function normalizeCount(text: string): number {
 function aggregate(
   segments: Segment[],
   recognizedText: string,
-  referenceText: string
+  referenceText: string,
+  truncated = false
 ): AzureScores {
   const allWords = segments.flatMap((s) => s.words);
   const refCount = normalizeCount(referenceText) || 1;
@@ -185,7 +200,9 @@ function aggregate(
   // 완성도 페널티: 지문을 끝까지 읽지 않으면 종합 점수를 크게 낮춘다.
   // 90% 이상 읽으면 감점 없음, 그 아래로는 읽은 비율에 비례해 가파르게 감점.
   // (예: 지문의 절반만 읽으면 발음이 좋아도 종합점수는 약 절반으로 떨어진다)
-  const completenessFactor = Math.min(1, completeness / 90);
+  // 인식이 도중에 끊긴 경우(truncated)의 완성도는 '학생이 덜 읽은 것'이 아니라
+  // '우리가 다 못 들은 것'이므로 감점하지 않는다.
+  const completenessFactor = truncated ? 1 : Math.min(1, completeness / 90);
   const pronunciation = quality * completenessFactor;
 
   return {
@@ -194,6 +211,7 @@ function aggregate(
     completeness: Math.round(completeness),
     prosody: prosody != null ? Math.round(prosody) : undefined,
     pronunciation: Math.round(pronunciation),
+    truncated: truncated || undefined,
     recognizedText,
     words: allWords,
   };

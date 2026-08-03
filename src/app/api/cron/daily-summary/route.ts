@@ -5,7 +5,7 @@ import { appOrigin } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // 매일 오후 10시(KST) 실행. 지난 24시간 제출 현황을 담임(반 담당 선생님)에게 Slack DM.
 // Vercel Cron 이 호출. CRON_SECRET 로 보호.

@@ -4,7 +4,7 @@ import { applyDueTransfers } from "@/lib/transfers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const RETENTION_DAYS = 60;
 

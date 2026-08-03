@@ -47,6 +47,9 @@ export interface AzureScores {
   accuracy: number; // 정확도
   fluency: number; // 유창성
   completeness: number; // 완성도
+  // 인식이 시간 제한에 걸려 도중에 끊긴 경우 true.
+  // 이때의 완성도는 실제로 읽은 양이 아니므로 감점에 쓰지 않는다.
+  truncated?: boolean;
   prosody?: number; // 억양/운율
   pronunciation: number; // 종합 발음 점수
   words?: Array<{

@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // Azure 연속 인식 + Claude 호출 시간 확보
+// Vercel Pro 기준 최대 300초. 긴 녹음도 인식이 잘리지 않도록 넉넉히 잡는다.
+export const maxDuration = 300;
 
 // 제출된 녹음 채점: 학생이 제출 직후 이 라우트를 호출한다.
 // 제출 저장과 분리되어 있어, 채점이 오래 걸리거나 실패해도 제출 자체는 유효하다.

@@ -12,7 +12,7 @@ import SubmitButton from "@/components/SubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import WordHighlights from "@/components/WordHighlights";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
   submitted: "제출됨",
@@ -197,6 +197,13 @@ export default async function AssignmentDashboard({
                         <ScoreCell label="완성도" value={scores.completeness} />
                         <ScoreCell label="억양" value={scores.prosody} />
                       </div>
+                    )}
+                    {scores?.truncated && (
+                      <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        ⚠️ 녹음이 길어 인식이 도중에 끊겼어요. 완성도는 실제로 읽은
+                        양이 아닐 수 있어 <b>종합 점수에 반영하지 않았습니다.</b>{" "}
+                        정확한 채점이 필요하면 [AI 재평가 실행]을 눌러 주세요.
+                      </p>
                     )}
 
                     {/* 단어별 발음 하이라이트 */}

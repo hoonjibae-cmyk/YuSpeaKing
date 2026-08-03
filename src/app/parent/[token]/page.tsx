@@ -32,9 +32,10 @@ export default async function ParentViewPage({
 
   const [{ data: klass }, { data: assignments }, { data: subs }] =
     await Promise.all([
+      // teachers 를 붙여 읽으면 조인 경로가 모호해 실패한다 → 반만 읽고 따로 조회
       admin
         .from("classes")
-        .select("name, teachers(name)")
+        .select("name, teacher_id")
         .eq("id", student.class_id)
         .maybeSingle(),
       admin
@@ -120,8 +121,10 @@ export default async function ParentViewPage({
     .limit(1)
     .maybeSingle();
 
-  const k = klass as { name?: string; teachers?: { name?: string } | { name?: string }[] } | null;
-  const teacher = Array.isArray(k?.teachers) ? k?.teachers[0] : k?.teachers;
+  const k = klass as { name?: string; teacher_id?: string } | null;
+  const { data: teacher } = k?.teacher_id
+    ? await admin.from("teachers").select("name").eq("id", k.teacher_id).maybeSingle()
+    : { data: null };
 
   return (
     <main className="mx-auto max-w-lg px-5 py-8">

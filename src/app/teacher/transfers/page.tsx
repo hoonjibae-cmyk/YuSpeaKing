@@ -94,21 +94,33 @@ export default async function TransfersPage({
   const mine = (myClasses ?? []) as { id: string; name: string }[];
 
   // 다른 선생님의 반 (담임을 맡아오기 요청용)
+  // teachers 를 붙여 읽으면 조인 경로가 모호해 실패한다 → 반만 읽고 이름은 따로 매핑
   const { data: otherClassesRaw } = await admin
     .from("classes")
-    .select("id, name, teacher_id, teachers(name, email)")
+    .select("id, name, teacher_id")
     .neq("teacher_id", effectiveId)
     .is("archived_at", null)
     .order("name");
-  const otherClasses = ((otherClassesRaw ?? []) as Array<{
+  const otherClassRows = (otherClassesRaw ?? []) as Array<{
     id: string;
     name: string;
     teacher_id: string;
-    teachers: { name?: string; email?: string } | { name?: string; email?: string }[] | null;
-  }>).map((c) => {
-    const t = Array.isArray(c.teachers) ? c.teachers[0] : c.teachers;
-    return { id: c.id, name: c.name, teacher: t?.name || t?.email || "선생님" };
-  });
+  }>;
+  const ownerIds = Array.from(new Set(otherClassRows.map((c) => c.teacher_id)));
+  const { data: owners } = ownerIds.length
+    ? await admin.from("teachers").select("id, name, email").in("id", ownerIds)
+    : { data: [] };
+  const ownerName = new Map(
+    ((owners ?? []) as { id: string; name: string | null; email: string }[]).map((t) => [
+      t.id,
+      t.name || t.email,
+    ])
+  );
+  const otherClasses = otherClassRows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    teacher: ownerName.get(c.teacher_id) || "선생님",
+  }));
 
   function describe(r: Req) {
     if (r.kind === "student") {

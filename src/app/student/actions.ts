@@ -50,12 +50,18 @@ export async function studentSignup(formData: FormData) {
 
   const admin = createAdminClient();
 
-  // 수강반 + 담당 선생님 확인
-  const { data: klass } = await admin
+  // 수강반 확인.
+  // ※ teachers 를 한 번에 붙여 읽지 않는다. classes 와 teachers 를 잇는 경로가
+  //   여러 개(class_coteachers 등)라 조인 대상이 모호해져 조회가 실패한다.
+  const { data: klass, error: klassErr } = await admin
     .from("classes")
-    .select("id, name, teacher_id, archived_at, teachers(email, slack_email)")
+    .select("id, name, teacher_id, archived_at")
     .eq("id", classId)
-    .single();
+    .maybeSingle();
+  if (klassErr) {
+    console.error("[학생가입] 수강반 조회 실패:", klassErr);
+    redirect(backWithError("수강반 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요"));
+  }
   if (!klass) {
     redirect(backWithError("수강반을 선택해 주세요"));
   }
@@ -94,11 +100,12 @@ export async function studentSignup(formData: FormData) {
   }
 
   // 담당 선생님에게 Slack DM (best-effort)
-  const t = Array.isArray(klass.teachers) ? klass.teachers[0] : klass.teachers;
-  const teacherEmail =
-    (t as { email?: string; slack_email?: string } | null)?.slack_email ||
-    (t as { email?: string } | null)?.email ||
-    null;
+  const { data: t } = await admin
+    .from("teachers")
+    .select("email, slack_email")
+    .eq("id", klass.teacher_id)
+    .maybeSingle();
+  const teacherEmail = t?.slack_email || t?.email || null;
   const approveUrl = `${appOrigin()}/teacher/classes/${classId}`;
   await notifyTeacher(
     teacherEmail,

@@ -46,11 +46,12 @@ export default async function StudentHome({
         .select("seen_badges, coupons_reset_at, bonus_coupons")
         .eq("id", session.studentId)
         .single(),
+      // teachers 를 붙여 읽으면 조인 경로가 모호해 실패한다 → 반만 읽고 따로 조회
       admin
         .from("classes")
-        .select("teachers(coupon_goal, coupon_reward_text)")
+        .select("teacher_id")
         .eq("id", session.classId)
-        .single(),
+        .maybeSingle(),
     ]);
 
   const allAssignments = assignmentsRes.data;
@@ -61,13 +62,15 @@ export default async function StudentHome({
     coupons_reset_at: string | null;
     bonus_coupons: number | null;
   } | null;
-  const teacherSettings = (() => {
-    const t = classRes.data?.teachers;
-    return (Array.isArray(t) ? t[0] : t) as
-      | { coupon_goal: number | null; coupon_reward_text: string | null }
-      | null
-      | undefined;
-  })();
+  const classTeacherId = (classRes.data as { teacher_id?: string } | null)
+    ?.teacher_id;
+  const { data: teacherSettings } = classTeacherId
+    ? await admin
+        .from("teachers")
+        .select("coupon_goal, coupon_reward_text")
+        .eq("id", classTeacherId)
+        .maybeSingle()
+    : { data: null };
 
   // 마감이 지난 과제는 '지난 과제 목록'으로. 홈에는 진행 중(마감 전/마감 없음)만.
   const assignments = (allAssignments ?? []).filter(

@@ -71,13 +71,15 @@ export async function assessPronunciation(
       }
     };
 
-    // 안전장치: 무한 대기 방지 (Vercel maxDuration 내)
+    // 안전장치: 무한 대기 방지.
+    // 함수 실행시간(60초) 안에서 피드백 생성까지 마쳐야 하므로 여유를 남긴다.
+    // 시간이 다 되면 그때까지 인식한 구간만으로 점수를 낸다.
     const timer = setTimeout(() => {
       finish(() => {
         if (segments.length) resolve(aggregate(segments, textParts.join(" "), referenceText));
         else reject(new Error("발음 평가 시간이 초과되었어요."));
       });
-    }, 50000);
+    }, 35000);
 
     recognizer.recognized = (_s, e) => {
       if (e.result.reason !== sdk.ResultReason.RecognizedSpeech) return;

@@ -84,20 +84,29 @@ ${referenceText}${ctxLine}
 - 인식된 발화: ${scores.recognizedText ?? "N/A"}
 - 취약 단어(단어(오류유형,정확도)): ${weakWords || "없음"}`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2500,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
-  });
+  // 함수 실행시간을 다 쓰지 않도록 상한을 둔다 (초과 시 점수만 저장되고 피드백은 생략)
+  const ac = new AbortController();
+  const cutoff = setTimeout(() => ac.abort(), 20000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2500,
+        system,
+        messages: [{ role: "user", content: user }],
+      }),
+      signal: ac.signal,
+    });
+  } finally {
+    clearTimeout(cutoff);
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");

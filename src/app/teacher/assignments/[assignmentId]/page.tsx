@@ -12,6 +12,8 @@ import SubmitButton from "@/components/SubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import WordHighlights from "@/components/WordHighlights";
 
+export const maxDuration = 60;
+
 const STATUS_LABEL: Record<SubmissionStatus, string> = {
   submitted: "제출됨",
   evaluating: "평가중",

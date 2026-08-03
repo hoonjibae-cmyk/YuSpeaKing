@@ -49,36 +49,50 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
     // 2) 발음평가 (Azure 우선, 없으면 OpenAI Whisper 대체)
     const scores = await assessSpeech(wav, assignment.passage_text);
 
-    // 3) Claude 2단 피드백 (등록일·누적 제출 횟수를 함께 전달해
-    //    신입생에게 과거 이력을 전제한 코멘트가 나가지 않도록 한다)
-    const [{ data: student }, { count: subCount }] = await Promise.all([
-      admin
-        .from("students")
-        .select("approved_at")
-        .eq("id", submission.student_id)
-        .maybeSingle(),
-      admin
-        .from("submissions")
-        .select("id", { count: "exact", head: true })
-        .eq("student_id", submission.student_id),
-    ]);
-    const feedback = await generateFeedback(scores, assignment.passage_text, {
-      approvedAt: (student?.approved_at as string | null) ?? null,
-      submissionCount: subCount ?? undefined,
-    });
-
-    // 4) 저장
+    // 3) 점수를 먼저 확정 저장한다.
+    //    긴 녹음은 피드백 생성까지 가기 전에 함수 실행시간이 끝날 수 있는데,
+    //    그때 'evaluating' 으로 영영 멈추지 않도록 여기서 먼저 완료 처리한다.
     await admin
       .from("submissions")
       .update({
         status: "evaluated",
         azure_scores: scores,
         overall_score: scores.pronunciation,
-        student_feedback: feedback.studentFeedback,
-        teacher_feedback: feedback.teacherFeedback,
+        student_feedback:
+          "채점이 끝났어요! 자세한 피드백을 정리하는 중이에요 🙂",
         error_message: null,
       })
       .eq("id", submissionId);
+
+    // 4) Claude 2단 피드백 (등록일·누적 제출 횟수를 함께 전달해
+    //    신입생에게 과거 이력을 전제한 코멘트가 나가지 않도록 한다)
+    //    여기서 실패해도 점수는 이미 저장되어 있다.
+    try {
+      const [{ data: student }, { count: subCount }] = await Promise.all([
+        admin
+          .from("students")
+          .select("approved_at")
+          .eq("id", submission.student_id)
+          .maybeSingle(),
+        admin
+          .from("submissions")
+          .select("id", { count: "exact", head: true })
+          .eq("student_id", submission.student_id),
+      ]);
+      const feedback = await generateFeedback(scores, assignment.passage_text, {
+        approvedAt: (student?.approved_at as string | null) ?? null,
+        submissionCount: subCount ?? undefined,
+      });
+      await admin
+        .from("submissions")
+        .update({
+          student_feedback: feedback.studentFeedback,
+          teacher_feedback: feedback.teacherFeedback,
+        })
+        .eq("id", submissionId);
+    } catch (e) {
+      console.error("[평가] 피드백 생성 실패(점수는 저장됨):", e);
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : "평가 중 오류";
     await admin

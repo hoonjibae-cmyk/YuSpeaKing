@@ -16,15 +16,18 @@ export default async function StudentSignupPage({
   const code = String(searchParams.t || "").trim();
   const admin = createAdminClient();
 
-  // 선생님별 고유 가입 링크(?t=코드) — 해당 선생님만 조회
-  const { data: teacher } = code
+  // 선생님별 고유 가입 링크(?t=코드).
+  // 승인 여부와 무관하게 먼저 찾아서, 막힌 이유를 구체적으로 안내한다.
+  const { data: teacherRow } = code
     ? await admin
         .from("teachers")
         .select("id, name, signup_code, status")
         .eq("signup_code", code)
-        .eq("status", "approved")
         .maybeSingle()
     : { data: null };
+  const teacher = teacherRow?.status === "approved" ? teacherRow : null;
+  // 링크는 맞는데 선생님 승인이 아직 안 난 경우
+  const teacherNotApproved = !!teacherRow && teacherRow.status !== "approved";
 
   const inputCls =
     "w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none";
@@ -44,12 +47,30 @@ export default async function StudentSignupPage({
               {decodeURIComponent(searchParams.error)}
             </p>
           )}
-          <div className="text-3xl">🔗</div>
-          <h1 className="mt-2 text-lg font-semibold">가입 링크를 확인해 주세요</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            선생님께 받은 <b>가입 신청 링크</b>로 다시 접속해 주세요. 링크에는
-            담당 선생님 정보가 담겨 있어요.
-          </p>
+          {teacherNotApproved ? (
+            <>
+              <div className="text-3xl">⏳</div>
+              <h1 className="mt-2 text-lg font-semibold">
+                아직 가입을 받을 수 없어요
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                <b>{teacherRow?.name ?? "담당"} 선생님</b>의 계정이 아직 운영자
+                승인 대기 중이에요. 선생님께 <b>운영자 승인</b>이 끝난 뒤 다시
+                신청해 달라고 전해 주세요.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="text-3xl">🔗</div>
+              <h1 className="mt-2 text-lg font-semibold">
+                가입 링크를 확인해 주세요
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                선생님께 받은 <b>가입 신청 링크</b>로 다시 접속해 주세요. 링크에는
+                담당 선생님 정보가 담겨 있어요.
+              </p>
+            </>
+          )}
           <Link
             href="/student"
             className="mt-4 inline-block text-sm font-medium text-brand hover:underline"

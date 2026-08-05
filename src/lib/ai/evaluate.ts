@@ -5,13 +5,25 @@ import { assessPronunciationOpenAI } from "./pronunciation-openai";
 import type { AzureScores } from "../types";
 import { generateFeedback } from "./feedback";
 
-// 평가 엔진 선택: Azure 키가 있으면 정밀 발음평가, 없으면 OpenAI(Whisper) 대체.
-function assessSpeech(wav: Buffer, referenceText: string): Promise<AzureScores> {
+// 평가 엔진 선택: Azure 가 있으면 정밀 발음평가, 없거나 실패하면 OpenAI(Whisper) 대체.
+//
+// 키가 없을 때뿐 아니라 '키는 있는데 호출이 실패하는' 경우(구독 만료·한도 초과·
+// 장애)에도 대체 엔진으로 넘어간다. 그렇지 않으면 Azure 문제 하나로 채점이 전면
+// 중단된다.
+async function assessSpeech(
+  wav: Buffer,
+  referenceText: string
+): Promise<AzureScores> {
   const hasAzure =
     !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION;
-  return hasAzure
-    ? assessPronunciation(wav, referenceText)
-    : assessPronunciationOpenAI(wav, referenceText);
+  if (!hasAzure) return assessPronunciationOpenAI(wav, referenceText);
+
+  try {
+    return await assessPronunciation(wav, referenceText);
+  } catch (e) {
+    console.error("[평가] Azure 발음평가 실패 → OpenAI 대체 평가로 전환:", e);
+    return await assessPronunciationOpenAI(wav, referenceText);
+  }
 }
 
 // 제출된 녹음 1건을 평가: Azure 발음평가 → Claude 2단 피드백 → DB 업데이트.

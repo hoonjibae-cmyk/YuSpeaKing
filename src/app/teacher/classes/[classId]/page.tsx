@@ -15,6 +15,7 @@ import {
   regenerateParentToken,
   requestClassTransfer,
   renameClass,
+  setCouponHelper,
 } from "../../actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,6 +26,7 @@ import PassageComposer from "./PassageComposer";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 import { todayKST } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
+import { listCouponHelpers } from "@/lib/coupon-helpers";
 import { appOrigin } from "@/lib/app-url";
 
 export default async function ClassDetailPage({
@@ -38,6 +40,7 @@ export default async function ClassDetailPage({
     moved?: string;
     requested?: string;
     renamed?: string;
+    helper?: string;
   };
 }) {
   const { db, effectiveId, isImpersonating, actingName } =
@@ -53,6 +56,7 @@ export default async function ClassDetailPage({
     { data: meRow },
     { data: myClassesRaw },
     { data: otherTeachersRaw },
+    helpers,
   ] = await Promise.all([
     db
       .from("classes")
@@ -82,6 +86,7 @@ export default async function ClassDetailPage({
       .eq("status", "approved")
       .neq("id", effectiveId)
       .order("name"),
+    listCouponHelpers(classId),
   ]);
 
   // 담임이거나, 인수인계 공동 관리 기간 중인 선생님만 접근 가능
@@ -250,6 +255,13 @@ export default async function ClassDetailPage({
           제출 기록·점수·쿠폰도 그대로 따라왔습니다.
         </p>
       )}
+      {searchParams.helper && (
+        <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          {searchParams.helper === "removed"
+            ? "✅ 보조 선생님 지정을 해제했어요."
+            : "✅ 보조 선생님으로 지정했어요. (Slack 알림 발송)"}
+        </p>
+      )}
       {searchParams.renamed && (
         <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
           ✅ 반 이름을 <b>{decodeURIComponent(searchParams.renamed)}</b> (으)로
@@ -261,6 +273,71 @@ export default async function ClassDetailPage({
           📨 인수인계를 요청했어요. 상대 선생님이 수락하면 완료됩니다. (Slack으로
           알림이 갔어요)
         </p>
+      )}
+
+      {/* 보조 선생님 (쿠폰 발급 전용) */}
+      {!isArchived && !isCoTeacher && otherTeachers.length > 0 && (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-600">
+            🎟️ 보조 선생님 (쿠폰 발급){helpers.length ? ` · ${helpers.length}명` : ""}
+          </summary>
+          <p className="mt-2 text-xs text-slate-500">
+            한 반을 두 분이 함께 맡을 때 사용해요. 지정된 선생님은{" "}
+            <b>이 반 학생에게 쿠폰만 줄 수 있고</b>, 과제 출제·채점·학생 관리는
+            담임 선생님만 할 수 있어요.
+          </p>
+
+          {helpers.length > 0 && (
+            <ul className="mt-3 space-y-1.5">
+              {helpers.map((h) => (
+                <li
+                  key={h.id}
+                  className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5"
+                >
+                  <span className="text-sm text-slate-700">{h.name} 선생님</span>
+                  <form action={setCouponHelper}>
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="teacherId" value={h.id} />
+                    <input type="hidden" name="remove" value="1" />
+                    <button className="text-xs text-slate-400 hover:text-red-500">
+                      해제
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form
+            action={setCouponHelper}
+            className="mt-3 flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="classId" value={classId} />
+            <select
+              name="teacherId"
+              required
+              defaultValue=""
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+            >
+              <option value="" disabled>
+                선생님 선택
+              </option>
+              {otherTeachers
+                .filter((t) => !helpers.some((h) => h.id === t.id))
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name || t.email} 선생님
+                  </option>
+                ))}
+            </select>
+            <SubmitButton
+              pendingText="지정 중…"
+              className="whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              지정
+            </SubmitButton>
+          </form>
+        </details>
       )}
 
       {/* 반 담임 인수인계 */}

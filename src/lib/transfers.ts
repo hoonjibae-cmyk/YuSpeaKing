@@ -33,6 +33,7 @@ export async function coTaughtClassIds(teacherId: string): Promise<string[]> {
     .from("class_coteachers")
     .select("class_id")
     .eq("teacher_id", teacherId)
+    .eq("role", "full") // 보조 선생님(쿠폰 전용)은 전체 권한이 아니다
     .lte("starts_on", today)
     .gte("ends_on", today);
   return ((data ?? []) as { class_id: string }[]).map((r) => r.class_id);
@@ -72,8 +73,13 @@ export async function applyDueTransfers(): Promise<number> {
           .from("classes")
           .update({ teacher_id: r.to_teacher_id })
           .eq("id", r.class_id);
-        // 담임이 바뀌었으므로 공동 관리 권한은 정리
-        await admin.from("class_coteachers").delete().eq("class_id", r.class_id);
+        // 담임이 바뀌었으므로 인수인계용 공동 관리 권한만 정리한다.
+        // (보조 선생님 role='coupon' 은 담임과 무관하게 유지)
+        await admin
+          .from("class_coteachers")
+          .delete()
+          .eq("class_id", r.class_id)
+          .eq("role", "full");
       }
       await admin
         .from("transfer_requests")

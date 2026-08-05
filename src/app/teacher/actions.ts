@@ -18,6 +18,7 @@ import { evaluateSubmission } from "@/lib/ai/evaluate";
 import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
+import { canGrantCoupons } from "@/lib/coupon-helpers";
 
 // 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
 async function generateAndStoreSamples(
@@ -506,6 +507,7 @@ export async function acceptTransfer(formData: FormData) {
         {
           class_id: reqRow.class_id,
           teacher_id: reqRow.to_teacher_id,
+          role: "full",
           starts_on: coStart,
           ends_on: effective,
         },
@@ -517,7 +519,11 @@ export async function acceptTransfer(formData: FormData) {
         .from("classes")
         .update({ teacher_id: reqRow.to_teacher_id })
         .eq("id", reqRow.class_id);
-      await admin.from("class_coteachers").delete().eq("class_id", reqRow.class_id);
+      await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", reqRow.class_id)
+      .eq("role", "full");
       update.applied_at = new Date().toISOString();
     }
   }
@@ -586,7 +592,11 @@ export async function resolveTransfer(formData: FormData) {
 
   // 예약을 취소하면 공동 관리 권한도 함께 회수
   if (reqRow.status === "accepted") {
-    await admin.from("class_coteachers").delete().eq("class_id", reqRow.class_id);
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", reqRow.class_id)
+      .eq("role", "full");
   }
 
   if (next === "rejected") {
@@ -726,24 +736,88 @@ export async function regenerateParentToken(formData: FormData) {
 
 // 선생님이 학생에게 보너스 쿠폰을 직접 주거나 회수한다 (delta: +1 / -1)
 export async function grantCoupon(formData: FormData) {
-  const { db } = await getTeacherContext();
+  const { effectiveId } = await getTeacherContext();
   const classId = String(formData.get("classId") || "");
   const studentId = String(formData.get("studentId") || "");
   const delta = Number(formData.get("delta") || 0);
-  if (!studentId || !delta) redirect(`/teacher/classes/${classId}`);
+  // 보조 선생님은 쿠폰 화면에서 쓰므로 돌아갈 곳이 다르다
+  const back = String(formData.get("back") || `/teacher/classes/${classId}`);
+  if (!studentId || !delta) redirect(back);
 
-  // 담당 반 학생인지 확인 후 증감 (음수로 내려가지 않게)
-  const { data: s } = await db
+  // 담임 · 보조 선생님(쿠폰 전용) · 공동 관리자만 지급 가능
+  if (!(await canGrantCoupons(effectiveId, classId))) redirect(back);
+
+  // 권한을 확인했으므로 서버 키로 좁게 처리한다
+  // (보조 선생님은 students 테이블 전체 권한이 없다)
+  const admin = createAdminClient();
+  const { data: s } = await admin
     .from("students")
     .select("id, bonus_coupons")
     .eq("id", studentId)
     .eq("class_id", classId)
-    .single();
-  if (!s) redirect(`/teacher/classes/${classId}`);
+    .maybeSingle();
+  if (!s) redirect(back);
 
   const next = Math.max(0, (s.bonus_coupons ?? 0) + delta);
-  await db.from("students").update({ bonus_coupons: next }).eq("id", studentId);
+  await admin.from("students").update({ bonus_coupons: next }).eq("id", studentId);
+  revalidatePath(back);
   revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 보조 선생님(쿠폰 발급 전용) 지정 / 해제 — 담임만
+export async function setCouponHelper(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const teacherId = String(formData.get("teacherId") || "");
+  const remove = String(formData.get("remove") || "") === "1";
+  const back = `/teacher/classes/${classId}`;
+  if (!classId || !teacherId) redirect(back);
+
+  const admin = createAdminClient();
+  // 담임 본인만 지정할 수 있다
+  const { data: klass } = await admin
+    .from("classes")
+    .select("id, name, teacher_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (!klass || klass.teacher_id !== effectiveId) {
+    redirect(`${back}?error=${encodeURIComponent("담임 선생님만 지정할 수 있어요")}`);
+  }
+  if (teacherId === effectiveId) redirect(back);
+
+  if (remove) {
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", classId)
+      .eq("teacher_id", teacherId)
+      .eq("role", "coupon");
+    revalidatePath(back);
+    redirect(`${back}?helper=removed`);
+  }
+
+  const { error } = await admin
+    .from("class_coteachers")
+    .upsert(
+      { class_id: classId, teacher_id: teacherId, role: "coupon" },
+      { onConflict: "class_id,teacher_id" }
+    );
+  if (error) {
+    redirect(`${back}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const me = await teacherContact(effectiveId);
+  await notifyTeacherById(
+    teacherId,
+    `🎟️ 유스피킹앱 보조 선생님으로 지정되었어요\n` +
+      `• 반: ${klass.name}\n` +
+      `• 지정: ${me?.name ?? "선생님"}\n` +
+      `이 반 학생들에게 쿠폰을 줄 수 있어요. (과제·채점은 담임 선생님이 관리)\n` +
+      `👉 쿠폰 주러 가기: ${appOrigin()}/teacher/coupons`
+  );
+
+  revalidatePath(back);
+  redirect(`${back}?helper=added`);
 }
 
 // ---------- 학생 ----------

@@ -14,6 +14,7 @@ import {
   grantCoupon,
   regenerateParentToken,
   requestClassTransfer,
+  renameClass,
 } from "../../actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,6 +37,7 @@ export default async function ClassDetailPage({
     pwreset?: string;
     moved?: string;
     requested?: string;
+    renamed?: string;
   };
 }) {
   const { db, effectiveId, isImpersonating, actingName } =
@@ -159,6 +161,37 @@ export default async function ClassDetailPage({
         )}
       </header>
 
+      {/* 반 이름 변경 (담임만) */}
+      {!isCoTeacher && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
+            ✏️ 반 이름 수정
+          </summary>
+          <form
+            action={renameClass}
+            className="mt-2 flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="classId" value={classId} />
+            <input
+              name="name"
+              defaultValue={klass.name}
+              required
+              maxLength={40}
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+            />
+            <SubmitButton
+              pendingText="저장 중…"
+              className="whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              저장
+            </SubmitButton>
+          </form>
+          <p className="mt-1 text-[11px] text-slate-400">
+            이름만 바뀌고 학생·과제·제출 기록은 그대로예요.
+          </p>
+        </details>
+      )}
+
       {isCoTeacher && (
         <p className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-700">
           🤝 <b>인수인계 공동 관리 기간</b>이에요. 기존 담임 선생님과 함께 이 반을
@@ -183,6 +216,12 @@ export default async function ClassDetailPage({
         <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
           ✅ {decodeURIComponent(searchParams.moved)} 학생을 이 반으로 옮겼어요.
           제출 기록·점수·쿠폰도 그대로 따라왔습니다.
+        </p>
+      )}
+      {searchParams.renamed && (
+        <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          ✅ 반 이름을 <b>{decodeURIComponent(searchParams.renamed)}</b> (으)로
+          바꿨어요.
         </p>
       )}
       {searchParams.requested && (

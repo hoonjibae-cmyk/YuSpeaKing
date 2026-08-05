@@ -186,6 +186,34 @@ export async function createClass(formData: FormData) {
   revalidatePath("/teacher");
 }
 
+// 반 이름 변경 (담임만 가능)
+export async function renameClass(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const name = String(formData.get("name") || "").trim();
+  if (!classId) redirect("/teacher");
+  if (!name) {
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent("반 이름을 입력해 주세요")}`
+    );
+  }
+
+  const { error } = await db
+    .from("classes")
+    .update({ name })
+    .eq("id", classId)
+    .eq("teacher_id", effectiveId); // 담임 본인 반만
+  if (error) {
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  revalidatePath("/teacher");
+  revalidatePath(`/teacher/classes/${classId}`);
+  redirect(`/teacher/classes/${classId}?renamed=${encodeURIComponent(name)}`);
+}
+
 // 반 보관(아카이브): 목록에서 숨기되 데이터는 유지
 export async function archiveClass(formData: FormData) {
   const { db, effectiveId } = await getTeacherContext();

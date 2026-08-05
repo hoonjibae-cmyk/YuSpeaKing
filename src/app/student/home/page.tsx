@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { studentLogout, redeemCoupons } from "../actions";
 import { CrownMark } from "@/components/Logo";
 import { todayKST } from "@/lib/date";
-import type { AzureScores } from "@/lib/types";
 import { getStudentNotices } from "@/lib/notices";
 import BadgeCelebration from "@/components/BadgeCelebration";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
@@ -32,9 +31,10 @@ export default async function StudentHome({
         .select("id, title, due_date, created_at")
         .eq("class_id", session.classId)
         .order("created_at", { ascending: false }),
+      // azure_scores 는 단어별 상세까지 들어 있어 무겁다 → 완성도 칼럼만 읽는다
       admin
         .from("submissions")
-        .select("assignment_id, status, overall_score, azure_scores, created_at")
+        .select("assignment_id, status, overall_score, completeness, created_at")
         .eq("student_id", session.studentId),
       admin
         .from("students")
@@ -148,7 +148,7 @@ export default async function StudentHome({
   // 과제 제출로 자동 적립된 쿠폰
   const autoCoupons = (subs ?? []).filter((s) => {
     if (s.status !== "evaluated") return false;
-    const comp = (s.azure_scores as AzureScores | null)?.completeness ?? null;
+    const comp = s.completeness == null ? null : Number(s.completeness);
     if (comp == null || comp < 90) return false;
     const ts = s.created_at ? new Date(s.created_at as string).getTime() : 0;
     return ts > resetAtMs;

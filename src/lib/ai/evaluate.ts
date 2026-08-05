@@ -58,6 +58,8 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
         status: "evaluated",
         azure_scores: scores,
         overall_score: scores.pronunciation,
+        // 쿠폰 집계를 가볍게 하려고 완성도는 칼럼으로도 저장한다
+        completeness: scores.completeness,
         student_feedback:
           "채점이 끝났어요! 자세한 피드백을 정리하는 중이에요 🙂",
         error_message: null,

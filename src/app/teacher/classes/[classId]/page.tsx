@@ -63,7 +63,7 @@ export default async function ClassDetailPage({
     db
       .from("students")
       .select(
-        "id, name, number, school, grade, username, status, bonus_coupons, parent_token, created_at"
+        "id, name, number, school, grade, username, status, bonus_coupons, coupons_reset_at, parent_token, created_at"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
@@ -98,6 +98,7 @@ export default async function ClassDetailPage({
     username: string | null;
     status: string | null;
     bonus_coupons: number | null;
+    coupons_reset_at: string | null;
     parent_token: string | null;
   };
   const roster = (students ?? []) as Row[];
@@ -105,6 +106,37 @@ export default async function ClassDetailPage({
   const approved = roster
     .filter((s) => s.status !== "pending" && s.status !== "rejected")
     .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
+
+  // 학생별 쿠폰 개수 = 완성도 90 이상 제출(리셋 이후) + 선생님이 준 특별 쿠폰
+  const couponCount = new Map<string, number>();
+  if (approved.length) {
+    const { data: couponSubs } = await db
+      .from("submissions")
+      .select("student_id, created_at")
+      .in(
+        "student_id",
+        approved.map((s) => s.id)
+      )
+      .eq("status", "evaluated")
+      .gte("completeness", 90);
+    const resetAt = new Map(
+      approved.map((s) => [
+        s.id,
+        s.coupons_reset_at ? new Date(s.coupons_reset_at).getTime() : 0,
+      ])
+    );
+    for (const r of (couponSubs ?? []) as {
+      student_id: string;
+      created_at: string;
+    }[]) {
+      if (new Date(r.created_at).getTime() > (resetAt.get(r.student_id) ?? 0)) {
+        couponCount.set(r.student_id, (couponCount.get(r.student_id) ?? 0) + 1);
+      }
+    }
+  }
+  for (const s of approved) {
+    couponCount.set(s.id, (couponCount.get(s.id) ?? 0) + Math.max(0, s.bonus_coupons ?? 0));
+  }
 
   const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;
   const myClasses = (myClassesRaw ?? []) as { id: string; name: string }[];
@@ -438,6 +470,12 @@ export default async function ClassDetailPage({
                       @{s.username}
                     </span>
                   )}
+                  <span
+                    className="ml-2 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                    title="모은 쿠폰 (과제 적립 + 특별 쿠폰)"
+                  >
+                    🎟️ {couponCount.get(s.id) ?? 0}
+                  </span>
                 </span>
                 <span className="flex items-center gap-3">
                   {s.username && (

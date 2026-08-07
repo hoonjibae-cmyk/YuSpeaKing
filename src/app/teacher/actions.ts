@@ -1122,7 +1122,9 @@ export async function updateAssignment(formData: FormData) {
     }
   }
 
+  // 마감일을 바꾸면 보관함↔진행 목록 사이를 오갈 수 있어 양쪽 다 갱신한다
   revalidatePath(`/teacher/classes/${classId}`);
+  revalidatePath(`/teacher/classes/${classId}/archive`);
 }
 
 // 과제 삭제 (중복 정리 등)
@@ -1133,6 +1135,7 @@ export async function deleteAssignment(formData: FormData) {
   // submissions 는 ON DELETE CASCADE
   await db.from("assignments").delete().eq("id", assignmentId);
   revalidatePath(`/teacher/classes/${classId}`);
+  revalidatePath(`/teacher/classes/${classId}/archive`);
 }
 
 // ---------- 월말 리포트 ----------
@@ -1244,4 +1247,5 @@ export async function regenerateSample(formData: FormData) {
   }
 
   revalidatePath(`/teacher/classes/${classId}`);
+  revalidatePath(`/teacher/classes/${classId}/archive`);
 }

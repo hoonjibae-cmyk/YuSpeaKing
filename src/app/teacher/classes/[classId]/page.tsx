@@ -6,9 +6,6 @@ import {
   approveStudent,
   rejectStudent,
   resetStudentPassword,
-  regenerateSample,
-  deleteAssignment,
-  updateAssignment,
   archiveClass,
   unarchiveClass,
   grantCoupon,
@@ -23,8 +20,8 @@ import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
-import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
-import { todayKST } from "@/lib/date";
+import AssignmentCard, { type AssignmentRow } from "./AssignmentCard";
+import { todayKST, archiveCutoffKST, ARCHIVE_AFTER_DAYS } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
 import { listCouponHelpers } from "@/lib/coupon-helpers";
 import { appOrigin } from "@/lib/app-url";
@@ -47,12 +44,17 @@ export default async function ClassDetailPage({
     await getTeacherContext();
   const { classId } = params;
 
+  // 마감 후 ARCHIVE_AFTER_DAYS 일이 지난 과제는 목록에서 빼고 보관함으로 보낸다.
+  // 반이 1년치 과제를 쌓아도 이 화면은 진행 중인 과제만 불러온다.
+  const cutoff = archiveCutoffKST();
+
   // 이 화면에 필요한 조회를 한꺼번에 (서로 의존하지 않는다)
   const [
     { data: klass },
     coIds,
     { data: students },
     { data: assignments },
+    { count: archivedAssignments },
     { data: meRow },
     { data: myClassesRaw },
     { data: otherTeachersRaw },
@@ -77,7 +79,13 @@ export default async function ClassDetailPage({
         "id, title, passage_text, sample_audio_url, sample_audio_slow_url, sample_voice, due_date, max_attempts, created_at, submissions(overall_score, status)"
       )
       .eq("class_id", classId)
+      .or(`due_date.is.null,due_date.gt.${cutoff}`)
       .order("created_at", { ascending: false }),
+    db
+      .from("assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classId)
+      .lte("due_date", cutoff),
     db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
     db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
     createAdminClient()
@@ -670,185 +678,31 @@ export default async function ClassDetailPage({
                 등록된 과제가 없어요
               </li>
             )}
-            {assignments?.map((a) => {
-              const subs =
-                (a.submissions as { overall_score: number | null; status: string }[]) ??
-                [];
-              const subCount = subs.length;
-              const evaluated = subs.filter(
-                (s) => s.status === "evaluated" && s.overall_score != null
-              );
-              const avg = evaluated.length
-                ? Math.round(
-                    evaluated.reduce((t, s) => t + Number(s.overall_score), 0) /
-                      evaluated.length
-                  )
-                : null;
-              const dueDate = (a.due_date as string) || null;
-              const isPastDue = !!dueDate && dueDate < today;
-              return (
-                <li
-                  key={a.id}
-                  className="overflow-hidden rounded-xl border border-slate-200 bg-white"
-                >
-                  {/* 클릭하면 제출 내역 상세로 이동하는 헤더 (한눈에 보이도록 강조) */}
-                  <Link
-                    href={`/teacher/assignments/${a.id}`}
-                    className="group flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 transition hover:bg-brand-light"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-800 group-hover:text-brand">
-                          {a.title}
-                        </span>
-                        {isPastDue ? (
-                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                            마감
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
-                            진행중
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
-                        <span>
-                          {dueDate ? `📅 마감 ${dueDate}` : "📅 상시 과제"}
-                        </span>
-                        <span className="text-slate-300">·</span>
-                        <span>
-                          제출 {subCount}명
-                          {avg != null && ` · 평균 ${avg}점`}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white group-hover:bg-brand-dark">
-                      제출 내역 보기 →
-                    </span>
-                  </Link>
-
-                  <div className="p-4">
-                  {/* 샘플음성 미리듣기 */}
-                  {a.sample_audio_url && (
-                    <div className="mt-2 space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-24 shrink-0 text-xs text-slate-500">
-                          🎧 원어민 속도
-                        </span>
-                        <audio
-                          src={a.sample_audio_url as string}
-                          controls
-                          preload="none"
-                          className="h-8 w-full"
-                        />
-                      </div>
-                      {a.sample_audio_slow_url && (
-                        <div className="flex items-center gap-2">
-                          <span className="w-24 shrink-0 text-xs text-slate-500">
-                            🐢 천천히
-                          </span>
-                          <audio
-                            src={a.sample_audio_slow_url as string}
-                            controls
-                            preload="none"
-                            className="h-8 w-full"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-2 flex items-center gap-3 text-xs">
-                    {a.sample_audio_url ? (
-                      <span className="text-green-600">✓ 샘플음성 준비됨</span>
-                    ) : (
-                      <span className="text-amber-600">⚠ 샘플음성 없음</span>
-                    )}
-                    <form action={regenerateSample} className="flex items-center gap-1.5">
-                      <input type="hidden" name="classId" value={classId} />
-                      <input type="hidden" name="assignmentId" value={a.id} />
-                      <select
-                        name="voice"
-                        defaultValue={
-                          (a.sample_voice as string) || DEFAULT_TTS_VOICE
-                        }
-                        className="max-w-[8.5rem] rounded border border-slate-200 px-1 py-0.5 text-[11px] text-slate-500 focus:border-brand focus:outline-none"
-                        title="음성 선택 후 재생성"
-                      >
-                        {TTS_VOICES.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.label}
-                          </option>
-                        ))}
-                      </select>
-                      <SubmitButton
-                        pendingText="생성 중…"
-                        className="whitespace-nowrap text-slate-400 hover:text-brand hover:underline"
-                      >
-                        음성 재생성
-                      </SubmitButton>
-                    </form>
-                    <form action={deleteAssignment} className="ml-auto">
-                      <input type="hidden" name="classId" value={classId} />
-                      <input type="hidden" name="assignmentId" value={a.id} />
-                      <SubmitButton
-                        pendingText="삭제 중…"
-                        className="text-slate-400 hover:text-red-500 hover:underline"
-                      >
-                        삭제
-                      </SubmitButton>
-                    </form>
-                  </div>
-
-                  {/* 과제 수정 */}
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
-                      수정
-                    </summary>
-                    <form action={updateAssignment} className="mt-2 space-y-2">
-                      <input type="hidden" name="classId" value={classId} />
-                      <input type="hidden" name="assignmentId" value={a.id} />
-                      <input
-                        name="title"
-                        defaultValue={a.title}
-                        required
-                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
-                      />
-                      <textarea
-                        name="passage_text"
-                        defaultValue={a.passage_text as string}
-                        required
-                        rows={4}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-                      />
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                        <label>
-                          마감일
-                          <input
-                            name="due_date"
-                            type="date"
-                            defaultValue={(a.due_date as string) ?? ""}
-                            className="ml-1 rounded border border-slate-300 px-2 py-1"
-                          />
-                        </label>
-                        <SubmitButton
-                          pendingText="저장 중…"
-                          className="ml-auto rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark"
-                        >
-                          저장
-                        </SubmitButton>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        제출은 학생당 1회 고정. 지문을 바꾸면 샘플음성이 자동으로
-                        다시 생성돼요.
-                      </p>
-                    </form>
-                  </details>
-                  </div>
-                </li>
-              );
-            })}
+            {assignments?.map((a) => (
+              <AssignmentCard
+                key={a.id}
+                a={a as unknown as AssignmentRow}
+                classId={classId}
+                today={today}
+              />
+            ))}
           </ul>
+
+          {/* 마감 과제 보관함 */}
+          <Link
+            href={`/teacher/classes/${classId}/archive`}
+            className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 transition hover:border-brand hover:bg-brand-light hover:text-brand"
+          >
+            <span>
+              🗂️ 마감 과제 보관함
+              {archivedAssignments ? ` (${archivedAssignments}개)` : ""}
+            </span>
+            <span className="text-xs text-slate-400">보러 가기 →</span>
+          </Link>
+          <p className="mt-1 text-[11px] text-slate-400">
+            마감 후 {ARCHIVE_AFTER_DAYS}일이 지난 과제는 보관함으로 옮겨져요.
+            제출 내역과 점수는 그대로 남아 있어요.
+          </p>
         </section>
       </div>
     </main>

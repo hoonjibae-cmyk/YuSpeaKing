@@ -156,6 +156,23 @@ export async function studentLogin(formData: FormData) {
     );
   }
 
+  // 보관한 반은 운영이 끝난 반이다. 다른 반으로 옮겨지지 않은 학생은
+  // 비활성으로 보고 로그인을 막는다. (선생님이 반을 복원하거나 학생을
+  // 다른 반으로 옮기면 곧바로 다시 들어올 수 있다)
+  const { data: klass } = await admin
+    .from("classes")
+    .select("archived_at")
+    .eq("id", student.class_id)
+    .maybeSingle();
+  if (klass?.archived_at) {
+    redirect(
+      "/student?error=" +
+        encodeURIComponent(
+          "이 반은 수업이 끝나 더 이상 이용할 수 없어요. 선생님께 문의해 주세요"
+        )
+    );
+  }
+
   await setStudentSession({
     studentId: student.id,
     classId: student.class_id,

@@ -25,7 +25,12 @@ export async function GET(req: Request) {
   const [teachersRes, classesRes, studentsRes, assignmentsRes] =
     await Promise.all([
       admin.from("teachers").select("id, name, email, slack_email"),
-      admin.from("classes").select("id, name, teacher_id"),
+      // 보관한 반은 운영이 끝난 반이므로 제출 현황 알림에서 제외한다.
+      // (그러지 않으면 학기가 끝난 반이 매일 '제출 0명'으로 계속 올라온다)
+      admin
+        .from("classes")
+        .select("id, name, teacher_id")
+        .is("archived_at", null),
       admin.from("students").select("id, class_id, status"),
       admin.from("assignments").select("id, class_id"),
     ]);

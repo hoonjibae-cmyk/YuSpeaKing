@@ -119,10 +119,13 @@ export default function Recorder({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ submissionId }),
+            // 학생이 채점을 기다리다 화면을 닫거나 휴대폰을 잠가도 요청이
+            // 끊기지 않도록 한다. (그래도 끊기면 서버 크론이 되살린다)
+            keepalive: true,
           });
         }
       } catch {
-        // 채점 지연/실패는 무시 (교사가 재평가 가능)
+        // 채점 지연/실패는 무시 — 10분 뒤 서버가 스스로 다시 채점한다
       }
       setPhase("done");
       router.refresh();

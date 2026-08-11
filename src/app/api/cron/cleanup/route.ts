@@ -29,32 +29,8 @@ export async function GET(req: Request) {
 
   const admin = createAdminClient();
 
-  // 채점 도중 함수 실행시간이 끝나 'evaluating' 에서 멈춘 제출을 되살린다.
-  // (그대로 두면 선생님 화면에 '평가중'으로 영영 남는다)
-  let stuckFixed = 0;
-  try {
-    const stuckBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const { data: stuck } = await admin
-      .from("submissions")
-      .select("id")
-      .eq("status", "evaluating")
-      .lt("created_at", stuckBefore)
-      .limit(50);
-    const ids = ((stuck ?? []) as { id: string }[]).map((s) => s.id);
-    if (ids.length) {
-      await admin
-        .from("submissions")
-        .update({
-          status: "error",
-          error_message:
-            "채점이 시간 안에 끝나지 않았어요. [AI 재평가 실행]으로 다시 시도해 주세요.",
-        })
-        .in("id", ids);
-      stuckFixed = ids.length;
-    }
-  } catch (e) {
-    console.error("[크론] 멈춘 채점 정리 실패:", e);
-  }
+  // 멈춘 채점 되살리기는 /api/cron/rescue 가 10분마다 맡는다.
+  // (여기서 하루 한 번 오류로 표시만 하면 그날 하루는 학생이 점수를 못 본다)
 
   const cutoff = new Date(
     Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
@@ -71,7 +47,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!old || old.length === 0) {
-    return NextResponse.json({ ok: true, deleted: 0, transfersApplied, stuckFixed });
+    return NextResponse.json({ ok: true, deleted: 0, transfersApplied });
   }
 
   // 스토리지 파일 삭제
@@ -87,5 +63,5 @@ export async function GET(req: Request) {
     .update({ audio_expired: true })
     .in("id", ids);
 
-  return NextResponse.json({ ok: true, deleted: ids.length, transfersApplied, stuckFixed });
+  return NextResponse.json({ ok: true, deleted: ids.length, transfersApplied });
 }

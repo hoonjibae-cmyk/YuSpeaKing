@@ -84,6 +84,8 @@ export async function POST(req: Request) {
         audio_path: path,
         attempt_count: nextAttempt,
         status: "submitted",
+        // 새 제출이므로 자동 채점 재시도 횟수도 새로 시작한다
+        evaluate_attempts: 0,
         azure_scores: null,
         overall_score: null,
         student_feedback: null,

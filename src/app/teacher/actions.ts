@@ -1075,7 +1075,14 @@ export async function reevaluateSubmission(formData: FormData) {
     .select("id")
     .eq("id", submissionId)
     .single();
-  if (sub) await evaluateSubmission(submissionId);
+  if (sub) {
+    // 선생님이 직접 누른 재평가는 자동 재시도 한도를 새로 열어 준다
+    await db
+      .from("submissions")
+      .update({ evaluate_attempts: 0 })
+      .eq("id", submissionId);
+    await evaluateSubmission(submissionId);
+  }
 
   revalidatePath(`/teacher/assignments/${assignmentId}`);
 }

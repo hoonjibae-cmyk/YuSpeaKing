@@ -63,7 +63,7 @@ export default async function CouponsPage({
   const { data: studentsRaw } = classId
     ? await admin
         .from("students")
-        .select("id, name, number, bonus_coupons, coupons_reset_at")
+        .select("id, name, number, bonus_coupons, carried_coupons, coupons_reset_at")
         .eq("class_id", classId)
         .eq("status", "approved")
         .order("number")
@@ -73,6 +73,7 @@ export default async function CouponsPage({
     name: string;
     number: number | null;
     bonus_coupons: number | null;
+    carried_coupons: number | null;
     coupons_reset_at: string | null;
   }[];
 
@@ -98,11 +99,11 @@ export default async function CouponsPage({
         couponCount.set(r.student_id, (couponCount.get(r.student_id) ?? 0) + 1);
       }
     }
+    // 특별 쿠폰 + 지난 지급 때 목표를 넘겨 이월된 쿠폰
     for (const s of students) {
-      couponCount.set(
-        s.id,
-        (couponCount.get(s.id) ?? 0) + Math.max(0, s.bonus_coupons ?? 0)
-      );
+      const extra =
+        Math.max(0, s.bonus_coupons ?? 0) + Math.max(0, s.carried_coupons ?? 0);
+      couponCount.set(s.id, (couponCount.get(s.id) ?? 0) + extra);
     }
   }
 

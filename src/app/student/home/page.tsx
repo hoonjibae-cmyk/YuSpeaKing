@@ -43,7 +43,7 @@ export default async function StudentHome({
         .eq("status", "approved"),
       admin
         .from("students")
-        .select("seen_badges, coupons_reset_at, bonus_coupons")
+        .select("seen_badges, coupons_reset_at, bonus_coupons, carried_coupons")
         .eq("id", session.studentId)
         .single(),
       // teachers 를 붙여 읽으면 조인 경로가 모호해 실패한다 → 반만 읽고 따로 조회
@@ -61,6 +61,7 @@ export default async function StudentHome({
     seen_badges: string[] | null;
     coupons_reset_at: string | null;
     bonus_coupons: number | null;
+    carried_coupons: number | null;
   } | null;
   const classTeacherId = (classRes.data as { teacher_id?: string } | null)
     ?.teacher_id;
@@ -153,9 +154,13 @@ export default async function StudentHome({
     const ts = s.created_at ? new Date(s.created_at as string).getTime() : 0;
     return ts > resetAtMs;
   }).length;
+  // 지난번 상품을 받을 때 목표를 넘겨 모아 이월된 쿠폰
+  const carriedCoupons = Math.max(0, studentRow?.carried_coupons ?? 0);
   // 선생님이 직접 준 보너스 쿠폰
   const bonusCoupons = Math.max(0, studentRow?.bonus_coupons ?? 0);
-  const couponCount = autoCoupons + bonusCoupons;
+  // 이월분과 자동 적립분은 평범한 쿠폰, 특별 쿠폰만 보라색으로 구분한다
+  const plainCoupons = carriedCoupons + autoCoupons;
+  const couponCount = plainCoupons + bonusCoupons;
   const couponFull = couponCount >= couponGoal;
 
   return (
@@ -285,9 +290,16 @@ export default async function StudentHome({
             {couponCount} / {couponGoal}개
           </span>
         </div>
-        {searchParams.redeemed && (
+        {searchParams.redeemed != null && (
           <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-green-700">
-            ✅ 쿠폰함이 새로 시작됐어요. 다시 모아볼까요?
+            {Number(searchParams.redeemed) > 0 ? (
+              <>
+                ✅ 상품을 받았어요! 넘겨 모은{" "}
+                <b>{Number(searchParams.redeemed)}개</b>는 그대로 이월됐어요.
+              </>
+            ) : (
+              <>✅ 쿠폰함이 새로 시작됐어요. 다시 모아볼까요?</>
+            )}
           </p>
         )}
         <p className="mt-1 text-[11px] text-amber-600">
@@ -296,8 +308,8 @@ export default async function StudentHome({
         <div className="mt-3 grid grid-cols-5 gap-1.5">
           {Array.from({ length: couponGoal }).map((_, i) => {
             const filled = i < couponCount;
-            // 자동 적립분을 먼저 채우고, 그 뒤가 선생님이 준 보너스 쿠폰
-            const isBonus = filled && i >= autoCoupons;
+            // 이월분·자동 적립분을 먼저 채우고, 그 뒤가 선생님이 준 보너스 쿠폰
+            const isBonus = filled && i >= plainCoupons;
             return (
               <div
                 key={i}

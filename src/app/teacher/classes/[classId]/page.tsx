@@ -69,7 +69,7 @@ export default async function ClassDetailPage({
     db
       .from("students")
       .select(
-        "id, name, number, school, grade, username, status, bonus_coupons, coupons_reset_at, parent_token, created_at"
+        "id, name, number, school, grade, username, status, bonus_coupons, carried_coupons, coupons_reset_at, parent_token, created_at"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
@@ -111,6 +111,7 @@ export default async function ClassDetailPage({
     username: string | null;
     status: string | null;
     bonus_coupons: number | null;
+    carried_coupons: number | null;
     coupons_reset_at: string | null;
     parent_token: string | null;
   };
@@ -147,8 +148,11 @@ export default async function ClassDetailPage({
       }
     }
   }
+  // 특별 쿠폰 + 지난 지급 때 목표를 넘겨 이월된 쿠폰
   for (const s of approved) {
-    couponCount.set(s.id, (couponCount.get(s.id) ?? 0) + Math.max(0, s.bonus_coupons ?? 0));
+    const extra =
+      Math.max(0, s.bonus_coupons ?? 0) + Math.max(0, s.carried_coupons ?? 0);
+    couponCount.set(s.id, (couponCount.get(s.id) ?? 0) + extra);
   }
 
   const signupCode = (meRow as { signup_code?: string } | null)?.signup_code;

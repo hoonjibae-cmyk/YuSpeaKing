@@ -224,15 +224,65 @@ export async function markBadgesSeen(keys: string[]) {
 
 // ---------- 쿠폰함 리셋(상품 수령 완료) ----------
 // 관리자(선생님)가 실물 상품 지급 후 누르는 버튼. 이 시각 이후 제출분부터 다시 적립.
+//
+// 목표를 채운 뒤 데스크에 가기 전까지 더 모은 쿠폰은 그냥 버리지 않고 이월한다.
+// (예: 27개에서 지급받으면 2개가 남아 2개부터 다시 시작)
 export async function redeemCoupons() {
   const session = await getActiveStudent();
   if (!session) redirect("/student");
   const admin = createAdminClient();
+
+  const [{ data: student }, { data: klass }] = await Promise.all([
+    admin
+      .from("students")
+      .select("coupons_reset_at, bonus_coupons, carried_coupons")
+      .eq("id", session.studentId)
+      .maybeSingle(),
+    // teachers 를 붙여 읽으면 조인 경로가 모호해 실패한다 → 반만 읽고 따로 조회
+    admin
+      .from("classes")
+      .select("teacher_id")
+      .eq("id", session.classId)
+      .maybeSingle(),
+  ]);
+
+  const teacherId = (klass as { teacher_id?: string } | null)?.teacher_id;
+  const { data: settings } = teacherId
+    ? await admin
+        .from("teachers")
+        .select("coupon_goal")
+        .eq("id", teacherId)
+        .maybeSingle()
+    : { data: null };
+  const goal = Math.max(1, (settings as { coupon_goal?: number } | null)?.coupon_goal ?? 25);
+
+  // 현재 쿠폰 수 = 기준 시각 이후 자동 적립분 + 이월분 + 선생님이 준 특별 쿠폰
+  const resetAt = student?.coupons_reset_at ?? null;
+  let q = admin
+    .from("submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", session.studentId)
+    .eq("status", "evaluated")
+    .gte("completeness", 90);
+  if (resetAt) q = q.gt("created_at", resetAt);
+  const { count: autoCount } = await q;
+
+  const total =
+    (autoCount ?? 0) +
+    Math.max(0, student?.carried_coupons ?? 0) +
+    Math.max(0, student?.bonus_coupons ?? 0);
+  const carryOver = Math.max(0, total - goal);
+
   await admin
     .from("students")
-    // 자동 적립분은 기준 시각으로, 선생님이 준 보너스 쿠폰은 0으로 되돌린다
-    .update({ coupons_reset_at: new Date().toISOString(), bonus_coupons: 0 })
+    .update({
+      coupons_reset_at: new Date().toISOString(),
+      // 특별 쿠폰은 소진, 목표를 넘긴 만큼만 이월분으로 남긴다
+      bonus_coupons: 0,
+      carried_coupons: carryOver,
+    })
     .eq("id", session.studentId);
+
   revalidatePath("/student/home");
-  redirect("/student/home?redeemed=1");
+  redirect(`/student/home?redeemed=${carryOver}`);
 }

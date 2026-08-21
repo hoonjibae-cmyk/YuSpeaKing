@@ -3,6 +3,10 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { blobToWav16kMono } from "@/lib/wav-client";
+import { createClient } from "@/lib/supabase/client";
+
+// 서버가 이유를 알려 준 오류. 재시도해도 결과가 같으므로 즉시 학생에게 보여 준다.
+class SubmitError extends Error {}
 
 type Phase =
   | "idle"
@@ -90,25 +94,70 @@ export default function Recorder({
     setPhase("idle");
   }
 
+  // 휴대폰 네트워크는 순간적으로 끊기는 일이 잦다. 한 번 실패했다고 바로
+  // 포기하지 않고 잠깐 쉬었다 다시 시도한다.
+  async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await fn();
+      } catch (e) {
+        lastErr = e;
+        // 정해진 안내 문구가 있는 오류(마감·횟수 초과 등)는 다시 시도해도 소용없다
+        if (e instanceof SubmitError) throw e;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+      }
+    }
+    console.error(`[제출] ${label} 실패:`, lastErr);
+    throw new Error(
+      "인터넷 연결이 불안정해서 제출하지 못했어요. 잠시 뒤 아래 [다시 제출하기]를 눌러 주세요."
+    );
+  }
+
+  async function postJson(url: string, body: unknown) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // 서버가 이유를 알려 준 경우엔 그대로 학생에게 보여 준다
+      throw new SubmitError(json.error || "제출에 실패했어요");
+    }
+    return json;
+  }
+
   async function submit() {
     if (!blobRef.current) return;
     setPhase("uploading");
     setError(null);
     try {
-      // Azure 발음평가용 16kHz mono WAV 로 변환 후 업로드
+      // Azure 발음평가용 16kHz mono WAV 로 변환
       const wav = await blobToWav16kMono(blobRef.current);
-      const fd = new FormData();
-      fd.append("assignmentId", assignmentId);
-      fd.append("audio", wav, "recording.wav");
-      const res = await fetch("/api/student/submit", {
-        method: "POST",
-        body: fd,
+
+      // 1) 1회용 업로드 URL 발급
+      const { path, token } = (await withRetry("업로드 URL 발급", () =>
+        postJson("/api/student/upload-url", { assignmentId })
+      )) as { path: string; token: string };
+
+      // 2) Supabase Storage 로 직접 업로드.
+      //    서버(Vercel 함수)를 거치지 않으므로 요청 본문 4.5MB 제한이 없다.
+      await withRetry("녹음 업로드", async () => {
+        const supabase = createClient();
+        const { error } = await supabase.storage
+          .from("submissions")
+          .uploadToSignedUrl(path, token, wav, {
+            contentType: "audio/wav",
+            upsert: true,
+          });
+        if (error) throw error;
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || "제출에 실패했어요");
-      }
-      const { submissionId } = (await res.json()) as { submissionId?: string };
+
+      // 3) 제출 기록 생성
+      const { submissionId } = (await withRetry("제출 기록", () =>
+        postJson("/api/student/submit", { assignmentId })
+      )) as { submissionId?: string };
 
       // 제출(저장) 성공 → 채점 단계로. 채점이 실패/지연돼도 제출은 이미 유효하므로
       // 완료 화면을 보여주고, 피드백은 준비되는 대로 표시된다.
@@ -131,6 +180,7 @@ export default function Recorder({
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "제출에 실패했어요");
+      // 녹음(blobRef)은 그대로 두어 다시 녹음하지 않고 재시도할 수 있게 한다
       setPhase("error");
     }
   }
@@ -176,13 +226,32 @@ export default function Recorder({
         </p>
       )}
 
+      {/* 제출만 실패한 경우: 녹음을 그대로 두고 다시 제출할 수 있게 한다.
+          (다시 녹음하게 만들면 학생이 읽은 걸 통째로 날린다) */}
+      {phase === "error" && audioUrl && (
+        <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-medium text-amber-700">
+            녹음은 그대로 있어요. 다시 녹음하지 말고 아래 버튼을 눌러 주세요.
+          </p>
+          <audio src={audioUrl} controls className="w-full" />
+          <button
+            onClick={submit}
+            className="w-full rounded-xl bg-brand py-3 font-semibold text-white hover:bg-brand-dark"
+          >
+            다시 제출하기
+          </button>
+        </div>
+      )}
+
       {(phase === "idle" || phase === "error") && (
         <div className="space-y-3">
           <button
             onClick={startRecording}
             className="w-full rounded-2xl bg-red-500 py-5 text-lg font-semibold text-white transition hover:bg-red-600"
           >
-            🔴 지금 녹음하기
+            {phase === "error" && audioUrl
+              ? "🔴 처음부터 다시 녹음하기"
+              : "🔴 지금 녹음하기"}
           </button>
 
           <div className="flex items-center gap-3 text-xs text-slate-400">

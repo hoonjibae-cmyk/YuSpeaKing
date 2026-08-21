@@ -1,97 +1,73 @@
 import { NextResponse } from "next/server";
 import { getStudentSession } from "@/lib/student-session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { todayKST } from "@/lib/date";
+import { checkCanSubmit, SUBMISSIONS_BUCKET } from "@/lib/student-submit";
 
 export const runtime = "nodejs";
 
-// 학생 녹음 제출: 오디오 업로드 + submission 레코드 생성(빠르게 반환).
+// 제출 기록 생성. 녹음 파일은 이미 브라우저가 /api/student/upload-url 로 받은
+// 1회용 URL 을 통해 Supabase Storage 에 직접 올려 둔 상태다.
+// 여기서는 그 파일이 실제로 있는지 확인하고 레코드만 만든다(가볍고 빠르다).
 // 채점(AI 평가)은 별도 /api/student/evaluate 에서 이어서 실행한다.
-// (제출과 채점을 분리해 제출이 타임아웃으로 실패하는 것을 방지)
 export async function POST(req: Request) {
   const session = await getStudentSession();
   if (!session) {
     return NextResponse.json({ error: "로그인이 필요해요" }, { status: 401 });
   }
 
-  const form = await req.formData();
-  const assignmentId = String(form.get("assignmentId") || "");
-  const audio = form.get("audio");
-
-  if (!assignmentId || !(audio instanceof Blob)) {
+  const { assignmentId } = (await req.json().catch(() => ({}))) as {
+    assignmentId?: string;
+  };
+  if (!assignmentId) {
     return NextResponse.json({ error: "잘못된 요청" }, { status: 400 });
+  }
+
+  const check = await checkCanSubmit(
+    session.studentId,
+    session.classId,
+    assignmentId
+  );
+  if (!check.ok) {
+    return NextResponse.json({ error: check.error }, { status: check.status });
   }
 
   const admin = createAdminClient();
 
-  // 과제가 이 학생의 반 것인지 확인
-  const { data: assignment } = await admin
-    .from("assignments")
-    .select("id, class_id, max_attempts, due_date")
-    .eq("id", assignmentId)
-    .single();
-  if (!assignment || assignment.class_id !== session.classId) {
-    return NextResponse.json({ error: "권한이 없어요" }, { status: 403 });
-  }
-
-  // 마감이 지난 과제는 제출 불가
-  if (assignment.due_date && assignment.due_date < todayKST()) {
+  // 경로는 서버가 정한 값을 그대로 쓴다(클라이언트가 보낸 경로를 믿지 않는다).
+  // 업로드가 실제로 끝났는지 확인하고, 빈 파일이면 제출로 인정하지 않는다.
+  const slash = check.path.lastIndexOf("/");
+  const folder = check.path.slice(0, slash);
+  const filename = check.path.slice(slash + 1);
+  const { data: files } = await admin.storage
+    .from(SUBMISSIONS_BUCKET)
+    .list(folder, { limit: 100, search: filename });
+  const uploaded = (files ?? []).find((f) => f.name === filename);
+  const size = (uploaded?.metadata as { size?: number } | undefined)?.size ?? 0;
+  if (!uploaded || size <= 0) {
     return NextResponse.json(
-      { error: "마감된 과제예요. 지금은 제출할 수 없어요." },
-      { status: 403 }
+      { error: "녹음 파일이 올라가지 않았어요. 다시 시도해 주세요." },
+      { status: 400 }
     );
   }
 
-  // 재제출 횟수 제한 확인
-  const { data: existing } = await admin
-    .from("submissions")
-    .select("attempt_count")
-    .eq("assignment_id", assignmentId)
-    .eq("student_id", session.studentId)
-    .maybeSingle();
-  const usedAttempts = existing?.attempt_count ?? 0;
-  if (usedAttempts >= 1) {
-    // 제출(분석)은 일괄 1회로 고정
-    return NextResponse.json(
-      { error: "제출 횟수를 모두 사용했어요. 선생님께 문의하세요." },
-      { status: 403 }
-    );
-  }
-  const nextAttempt = usedAttempts + 1;
-
-  // 오디오 업로드 (submissions 버킷, 비공개)
-  const ext = audio.type.includes("wav") ? "wav" : "webm";
-  const path = `${assignmentId}/${session.studentId}.${ext}`;
-  const buffer = Buffer.from(await audio.arrayBuffer());
-
-  const { error: upErr } = await admin.storage
-    .from("submissions")
-    .upload(path, buffer, {
-      contentType: audio.type || "audio/webm",
-      upsert: true,
-    });
-  if (upErr) {
-    return NextResponse.json({ error: upErr.message }, { status: 500 });
-  }
-
-  // submission 레코드 upsert (재제출 시 덮어쓰기)
   const { data: submission, error: subErr } = await admin
     .from("submissions")
     .upsert(
       {
         assignment_id: assignmentId,
         student_id: session.studentId,
-        audio_path: path,
-        attempt_count: nextAttempt,
+        audio_path: check.path,
+        attempt_count: check.attempt,
         status: "submitted",
-        // 새 제출이므로 자동 채점 재시도 횟수도 새로 시작한다
-        evaluate_attempts: 0,
         azure_scores: null,
         overall_score: null,
+        completeness: null,
         student_feedback: null,
         teacher_feedback: null,
         teacher_reviewed: false,
         error_message: null,
+        // 새 제출이므로 자동 채점 재시도 횟수도 새로 시작한다
+        evaluate_attempts: 0,
       },
       { onConflict: "assignment_id,student_id" }
     )
@@ -105,6 +81,5 @@ export async function POST(req: Request) {
     );
   }
 
-  // 업로드·저장 완료. 채점은 클라이언트가 이어서 /api/student/evaluate 를 호출.
   return NextResponse.json({ ok: true, submissionId: submission.id });
 }

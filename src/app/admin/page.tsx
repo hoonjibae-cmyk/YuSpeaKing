@@ -180,6 +180,13 @@ export default async function AdminDashboard({
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // 운영 현황에는 '활성 반이 있는' 선생님만 올린다.
+  // (classes 는 이미 보관되지 않은 반만 조회하므로 classCount 가 곧 활성 반 수)
+  // 반이 없는 선생님은 볼 지표가 없어 표만 길어진다. 다만 계정 관리(권한·삭제)는
+  // 계속 할 수 있어야 하므로 화면 아래 접이식 목록으로 따로 둔다.
+  const activeRows = rows.filter((r) => r.classCount > 0);
+  const idleRows = rows.filter((r) => r.classCount === 0);
+
   const base = appOrigin();
   const teacherSignupUrl = base
     ? `${base}/teacher/login?mode=signup`
@@ -332,85 +339,33 @@ export default async function AdminDashboard({
         })}
       </div>
 
-      {/* 선생님별 운영 현황 (그래프) */}
-      {rows.length > 0 && (
-        <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="font-semibold">
-            선생님별 운영 현황 · <span className="text-brand">{weekLabel}</span>
-          </h2>
-          <p className="mt-1 text-xs text-slate-400">
-            과제 생성률(반 수 × 주 2회 기준)·제출률·평균점수를 막대로 비교해요.
-          </p>
-          <div className="mt-4 space-y-4">
-            {[...rows]
-              .sort((a, b) => b.creationRate - a.creationRate)
-              .map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-medium">
-                      {r.name}
-                      {r.isAdmin && (
-                        <span className="ml-1.5 rounded-full bg-brand-light px-1.5 py-0.5 text-[10px] text-brand">
-                          운영자
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {r.classCount}반 · {r.studentCount}명
-                    </span>
-                  </div>
-                  <div className="mt-1.5 space-y-1">
-                    <Bar
-                      label="과제생성"
-                      value={r.creationRate}
-                      display={`${r.weekUploads}/${r.target} (${r.creationRate}%)`}
-                      tone={r.creationRate < 100 ? "amber" : "brand"}
-                    />
-                    <Bar
-                      label="제출률"
-                      value={r.rate}
-                      display={`${r.rate}%`}
-                      tone={r.rate < 60 ? "amber" : "brand"}
-                    />
-                    <Bar
-                      label="평균"
-                      value={r.avg ?? 0}
-                      display={r.avg != null ? `${r.avg}점` : "-"}
-                      tone="green"
-                    />
-                  </div>
-                </div>
-              ))}
-          </div>
-        </section>
-      )}
+      {/* 선생님별 운영 현황 — 지표와 계정 관리를 한 곳에서 */}
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold">
+          선생님별 운영 현황 · <span className="text-brand">{weekLabel}</span>
+        </h2>
+        <p className="mt-1 text-xs text-slate-400">
+          과제 생성률(반 수 × 주 2회 기준)·제출률·평균점수. 이름을 누르면 그
+          선생님 화면으로 들어갑니다.
+        </p>
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs text-slate-500">
-            <tr>
-              <th className="px-4 py-3">선생님</th>
-              <th className="px-3 py-3">반/학생</th>
-              <th className="px-3 py-3">과제(누적)</th>
-              <th className="px-3 py-3">과제생성 ({weekLabel})</th>
-              <th className="px-3 py-3">최근 업로드</th>
-              <th className="px-3 py-3">제출률 ({weekLabel})</th>
-              <th className="px-3 py-3">평균 ({weekLabel})</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                  등록된 선생님이 없어요.
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3">
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
+        {activeRows.length === 0 && (
+          <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+            운영 중인 반을 가진 선생님이 없어요.
+          </p>
+        )}
+
+        <div className="mt-4 space-y-3">
+          {[...activeRows]
+            .sort((a, b) => b.creationRate - a.creationRate)
+            .map((r) => (
+              <div
+                key={r.id}
+                className="rounded-xl border border-slate-200 p-4 transition hover:border-brand/40"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <form action={impersonateTeacher}>
                         <input type="hidden" name="teacherId" value={r.id} />
                         <button
@@ -422,80 +377,95 @@ export default async function AdminDashboard({
                         </button>
                       </form>
                       {r.isAdmin && (
-                        <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand">
+                        <span className="rounded-full bg-brand-light px-2 py-0.5 text-[10px] text-brand">
                           운영자
                         </span>
                       )}
                     </div>
                     <div className="text-xs text-slate-400">{r.email}</div>
-                    {r.id !== meUser.id && (
-                      <div className="flex items-center gap-3">
-                        <form action={setTeacherRole}>
-                          <input type="hidden" name="teacherId" value={r.id} />
-                          <input
-                            type="hidden"
-                            name="role"
-                            value={r.isAdmin ? "teacher" : "admin"}
-                          />
-                          <button
-                            type="submit"
-                            className="text-xs text-slate-400 hover:text-brand"
-                          >
-                            {r.isAdmin ? "운영자 해제" : "운영자로 지정"}
-                          </button>
-                        </form>
-                        <form action={deleteTeacher}>
-                          <input type="hidden" name="teacherId" value={r.id} />
-                          <ConfirmSubmitButton
-                            message={`'${r.name}' 선생님의 계정과 그 선생님의 반·학생·과제·제출 기록이 모두 삭제됩니다. 되돌릴 수 없어요. 정말 삭제할까요?`}
-                            className="text-xs text-slate-400 hover:text-red-500"
-                          >
-                            계정 삭제
-                          </ConfirmSubmitButton>
-                        </form>
-                      </div>
-                    )}
                   </div>
-                </td>
-                <td className="px-3 py-3 text-slate-600">
-                  {r.classCount}반 · {r.studentCount}명
-                </td>
-                <td className="px-3 py-3 text-slate-600">{r.assignmentCount}개</td>
-                <td className="px-3 py-3">
-                  <span
-                    className={
-                      r.creationRate < 100
-                        ? "font-medium text-amber-600"
-                        : "font-medium text-green-600"
-                    }
-                  >
-                    {r.weekUploads}개
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    {" "}
-                    / {r.target}개 ({r.creationRate}%)
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-slate-500">
-                  {r.lastUpload ? r.lastUpload.slice(0, 10).replace(/-/g, ".") : "-"}
-                </td>
-                <td className="px-3 py-3">
-                  <span
-                    className={
-                      r.rate < 60 ? "text-amber-600" : "text-slate-700"
-                    }
-                  >
-                    {r.rate}%
-                  </span>
-                </td>
-                <td className="px-3 py-3 font-semibold text-brand">
-                  {r.avg != null ? `${r.avg}점` : "-"}
-                </td>
-              </tr>
+                  <div className="text-right text-xs text-slate-500">
+                    <div>
+                      {r.classCount}반 · {r.studentCount}명 · 누적 과제{" "}
+                      {r.assignmentCount}개
+                    </div>
+                    <div className="text-slate-400">
+                      최근 업로드{" "}
+                      {r.lastUpload
+                        ? r.lastUpload.slice(0, 10).replace(/-/g, ".")
+                        : "-"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1">
+                  <Bar
+                    label="과제생성"
+                    value={r.creationRate}
+                    display={`${r.weekUploads}/${r.target} (${r.creationRate}%)`}
+                    tone={r.creationRate < 100 ? "amber" : "brand"}
+                  />
+                  <Bar
+                    label="제출률"
+                    value={r.rate}
+                    display={`${r.rate}%`}
+                    tone={r.rate < 60 ? "amber" : "brand"}
+                  />
+                  <Bar
+                    label="평균"
+                    value={r.avg ?? 0}
+                    display={r.avg != null ? `${r.avg}점` : "-"}
+                    tone="green"
+                  />
+                </div>
+
+                {r.id !== meUser.id && (
+                  <TeacherAdminActions id={r.id} name={r.name} isAdmin={r.isAdmin} />
+                )}
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+        </div>
+      </section>
+
+      {/* 활성 반이 없는 선생님 — 지표는 없지만 계정 관리는 여기서 */}
+      {idleRows.length > 0 && (
+        <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
+          <summary className="cursor-pointer text-sm font-medium text-slate-600">
+            운영 중인 반이 없는 선생님 {idleRows.length}명
+          </summary>
+          <p className="mt-2 text-xs text-slate-400">
+            반을 아직 만들지 않았거나 맡은 반을 모두 보관한 선생님이에요. 볼
+            지표가 없어 위 현황에서는 제외했습니다.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {idleRows.map((r) => (
+              <li key={r.id} className="rounded-xl bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <form action={impersonateTeacher}>
+                    <input type="hidden" name="teacherId" value={r.id} />
+                    <button
+                      type="submit"
+                      className="font-medium text-brand hover:underline"
+                      title="이 선생님 화면으로 들어가기"
+                    >
+                      {r.name}
+                    </button>
+                  </form>
+                  {r.isAdmin && (
+                    <span className="rounded-full bg-brand-light px-2 py-0.5 text-[10px] text-brand">
+                      운영자
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-400">{r.email}</span>
+                </div>
+                {r.id !== meUser.id && (
+                  <TeacherAdminActions id={r.id} name={r.name} isAdmin={r.isAdmin} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <p className="mt-4 text-xs text-slate-400">
         · 과제 생성률 = 그 주 생성 과제 ÷ (등록 반 수 × 주 2회). 100% 미만은
@@ -503,6 +473,38 @@ export default async function AdminDashboard({
         주황색.
       </p>
     </main>
+  );
+}
+
+// 이름 옆 계정 관리(권한 변경·삭제). 운영 현황과 '반 없는 선생님' 목록이 함께 쓴다.
+function TeacherAdminActions({
+  id,
+  name,
+  isAdmin,
+}: {
+  id: string;
+  name: string;
+  isAdmin: boolean;
+}) {
+  return (
+    <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-2">
+      <form action={setTeacherRole}>
+        <input type="hidden" name="teacherId" value={id} />
+        <input type="hidden" name="role" value={isAdmin ? "teacher" : "admin"} />
+        <button type="submit" className="text-xs text-slate-400 hover:text-brand">
+          {isAdmin ? "운영자 해제" : "운영자로 지정"}
+        </button>
+      </form>
+      <form action={deleteTeacher}>
+        <input type="hidden" name="teacherId" value={id} />
+        <ConfirmSubmitButton
+          message={`'${name}' 선생님의 계정과 그 선생님의 반·학생·과제·제출 기록이 모두 삭제됩니다. 되돌릴 수 없어요. 정말 삭제할까요?`}
+          className="text-xs text-slate-400 hover:text-red-500"
+        >
+          계정 삭제
+        </ConfirmSubmitButton>
+      </form>
+    </div>
   );
 }
 

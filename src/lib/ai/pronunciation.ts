@@ -2,6 +2,7 @@ import "server-only";
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { AzureScores } from "../types";
 import { logUsage } from "../usage";
+import { alignWords, normalizeWords } from "./align";
 
 // 인식 상한. Vercel Pro(최대 300초) 기준으로 넉넉히 잡아 긴 녹음도 끝까지 인식한다.
 // 과제를 15문장까지 낼 수 있게 되면서 녹음이 3분을 넘길 수 있어 상한을 올렸다.
@@ -178,10 +179,17 @@ function aggregate(
     ? scored.reduce((a, w) => a + w.accuracy, 0) / scored.length
     : 0;
 
-  // 완성도: 실제로 읽은(누락 아님) 단어 수 / 지문 단어 수
-  const spoken = allWords.filter(
+  // 완성도: 실제로 읽은 단어 수 / 지문 단어 수
+  //
+  // Azure 의 누락(Omission) 표시만 믿지 않는다. 쉬지 않고 이어 읽으면 연속 인식이
+  // 구간 경계의 단어를 정렬하지 못해, 학생이 분명히 발음한 단어까지 '안 읽음'으로
+  // 찍히는 일이 잦다. 그런 단어도 인식문(recognizedText)에는 남아 있으므로
+  // 전체 인식문을 지문과 다시 맞춰 보고, 둘 중 더 많이 읽은 쪽을 인정한다.
+  const spokenByAzure = allWords.filter(
     (w) => w.errorType !== "Omission" && w.errorType !== "Insertion"
   ).length;
+  const alignment = alignWords(referenceText, recognizedText);
+  const spoken = Math.max(spokenByAzure, alignment.matched);
   const completeness = Math.min(100, (spoken / refCount) * 100);
 
   // 유창성/억양: 구간 단어 수로 가중 평균
@@ -208,6 +216,20 @@ function aggregate(
   const completenessFactor = truncated ? 1 : Math.min(1, completeness / 90);
   const pronunciation = quality * completenessFactor;
 
+  // 화면 표시도 함께 바로잡는다. 인식문에 남아 있는 단어가 '안 읽음'으로
+  // 회색 취소선 처리되면 학생·선생님이 사실과 다른 피드백을 보게 된다.
+  const heard = new Set(
+    Array.from(alignment.matchedRefIdx, (i) => alignment.refWords[i])
+  );
+  const avgAccuracy = Math.round(accuracy);
+  const words = allWords.map((w) => {
+    if (w.errorType !== "Omission") return w;
+    const key = normalizeWords(w.word)[0];
+    if (!key || !heard.has(key)) return w;
+    // 실제로는 읽은 단어. Azure 가 점수를 매기지 않았으므로 평균 정확도로 채운다.
+    return { ...w, accuracy: avgAccuracy, errorType: "None" };
+  });
+
   return {
     accuracy: Math.round(accuracy),
     fluency: Math.round(fluency),
@@ -216,6 +238,6 @@ function aggregate(
     pronunciation: Math.round(pronunciation),
     truncated: truncated || undefined,
     recognizedText,
-    words: allWords,
+    words,
   };
 }

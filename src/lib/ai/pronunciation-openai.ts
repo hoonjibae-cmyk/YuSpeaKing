@@ -1,5 +1,6 @@
 import "server-only";
 import type { AzureScores } from "../types";
+import { alignWords, normalizeWords } from "./align";
 
 // Azure 대체 엔진: OpenAI Whisper 로 전사(STT) 후, 참조 지문과 단어 정렬 비교로
 // 근사 점수를 산출한다. 음소 단위 정밀도는 Azure보다 낮지만, Azure 키 없이도
@@ -41,49 +42,14 @@ export async function assessPronunciationOpenAI(
   return scoreByAlignment(referenceText, recognizedText);
 }
 
-function normalize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9'\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-// LCS 기반 단어 정렬로 정확도/완성도/유창성 근사치 계산
+// 단어 정렬은 Azure 경로와 같은 모듈을 쓴다 (기준이 갈리지 않도록)
 function scoreByAlignment(reference: string, hypothesis: string): AzureScores {
-  const ref = normalize(reference);
-  const hyp = normalize(hypothesis);
-  const R = ref.length || 1;
-
-  // LCS 길이 및 매칭된 참조 단어 인덱스
-  const n = ref.length;
-  const m = hyp.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array(m + 1).fill(0)
+  const { refWords: ref, matchedRefIdx, matched } = alignWords(
+    reference,
+    hypothesis
   );
-  for (let i = 1; i <= n; i++) {
-    for (let j = 1; j <= m; j++) {
-      dp[i][j] =
-        ref[i - 1] === hyp[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
-    }
-  }
-  const matched = dp[n][m];
-  const matchedRefIdx = new Set<number>();
-  let i = n;
-  let j = m;
-  while (i > 0 && j > 0) {
-    if (ref[i - 1] === hyp[j - 1]) {
-      matchedRefIdx.add(i - 1);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
+  const R = ref.length || 1;
+  const m = normalizeWords(hypothesis).length;
 
   const completeness = Math.round((matched / R) * 100);
   const accuracy = Math.round((matched / R) * 100);

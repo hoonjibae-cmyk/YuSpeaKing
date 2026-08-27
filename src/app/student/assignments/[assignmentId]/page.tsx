@@ -134,6 +134,10 @@ export default async function StudentAssignmentPage({
               assignmentId={assignment.id}
               alreadySubmitted={alreadySubmitted}
               remainingAttempts={remainingAttempts}
+              passageWords={
+                assignment.passage_text.trim().split(/\s+/).filter(Boolean)
+                  .length
+              }
             />
           )}
         </div>

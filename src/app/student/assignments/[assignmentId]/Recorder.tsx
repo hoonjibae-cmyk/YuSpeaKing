@@ -14,6 +14,23 @@ const MAX_RECORD_SEC = 360; // 6분
 // 이 시점부터 남은 시간을 알려 준다
 const WARN_AT_SEC = MAX_RECORD_SEC - 60;
 
+// 녹음 데이터를 1초마다 흘려 받는다. 인자 없이 start() 하면 중지할 때까지
+// 브라우저 내부에만 쌓여 있다가, 화면이 꺼지거나 다른 앱으로 넘어가면
+// 그때까지 모은 것만 남고 뒷부분이 통째로 사라진다.
+const CHUNK_MS = 1000;
+
+// 초6이 영어 문장을 소리내어 읽는 속도의 하한(단어당 초).
+// 이보다 짧으면 지문을 끝까지 읽지 않았을 가능성이 높다.
+const MIN_SEC_PER_WORD = 0.3;
+
+// 실제 오디오 길이가 녹음한 시간의 이 비율보다 짧으면 중간에 끊긴 것으로 본다
+const TRUNCATED_RATIO = 0.6;
+
+// 16kHz · mono · 16bit WAV 는 초당 32,000바이트 (44는 헤더)
+function wavSeconds(size: number) {
+  return Math.max(0, (size - 44) / 32000);
+}
+
 function mmss(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -33,10 +50,12 @@ export default function Recorder({
   assignmentId,
   alreadySubmitted,
   remainingAttempts,
+  passageWords,
 }: {
   assignmentId: string;
   alreadySubmitted: boolean;
   remainingAttempts: number;
+  passageWords: number;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>(alreadySubmitted ? "done" : "idle");
@@ -44,6 +63,10 @@ export default function Recorder({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   const [elapsed, setElapsed] = useState(0);
+  // 중지 시점의 녹음 길이(초). 미리듣기와 짧은 녹음 경고에 쓴다.
+  const [recordedSec, setRecordedSec] = useState(0);
+
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -64,6 +87,12 @@ export default function Recorder({
           clearInterval(tickRef.current);
           tickRef.current = null;
         }
+        setElapsed((v) => {
+          setRecordedSec(v);
+          return v;
+        });
+        wakeLockRef.current?.release().catch(() => {});
+        wakeLockRef.current = null;
         // iOS Safari는 webm 재생을 못 하므로 실제 녹음 포맷(mr.mimeType)으로 라벨링해야
         // 미리듣기 <audio>가 정상 재생된다. (하드코딩 시 "오류" 표시)
         const type = mr.mimeType || "audio/webm";
@@ -74,7 +103,20 @@ export default function Recorder({
         setPhase("recorded");
       };
       mediaRecorderRef.current = mr;
-      mr.start();
+      // 1초 단위로 받아 둬야 중간에 끊겨도 그때까지가 남는다
+      mr.start(CHUNK_MS);
+
+      // 읽는 동안 화면이 꺼지면 녹음이 중단될 수 있어 화면을 깨워 둔다
+      // (지원하지 않는 브라우저에서는 조용히 넘어간다)
+      try {
+        const nav = navigator as Navigator & {
+          wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> };
+        };
+        wakeLockRef.current = (await nav.wakeLock?.request("screen")) ?? null;
+      } catch {
+        wakeLockRef.current = null;
+      }
+
       setElapsed(0);
       tickRef.current = setInterval(() => setElapsed((v) => v + 1), 1000);
       setPhase("recording");
@@ -170,6 +212,18 @@ export default function Recorder({
       // Azure 발음평가용 16kHz mono WAV 로 변환
       const wav = await blobToWav16kMono(blobRef.current);
 
+      // 녹음한 시간보다 실제 오디오가 크게 짧으면 중간에 끊긴 것이다.
+      // (화면 잠김·앱 전환 등) 그대로 내면 뒷부분이 통째로 빠진 채 채점돼
+      // 한 자리 점수가 나오므로, 제출 횟수를 쓰기 전에 여기서 막는다.
+      const audioSec = wavSeconds(wav.size);
+      if (recordedSec > 20 && audioSec < recordedSec * TRUNCATED_RATIO) {
+        throw new SubmitError(
+          `녹음이 중간에 끊겼어요. (${mmss(recordedSec)} 동안 녹음했는데 ` +
+            `${mmss(Math.round(audioSec))} 만 저장됐어요)\n` +
+            "읽는 동안 화면을 끄거나 다른 앱으로 넘어가지 말고, 처음부터 다시 녹음해 주세요."
+        );
+      }
+
       // 1) 1회용 업로드 URL 발급
       const { path, token } = (await withRetry("업로드 URL 발급", () =>
         postJson("/api/student/upload-url", { assignmentId })
@@ -255,7 +309,7 @@ export default function Recorder({
   return (
     <div className="space-y-4">
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p className="whitespace-pre-line rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
           {error}
         </p>
       )}
@@ -328,6 +382,24 @@ export default function Recorder({
 
       {phase === "recorded" && audioUrl && (
         <div className="space-y-3">
+          {recordedSec > 0 && (
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>🎙️ 녹음 길이 {mmss(recordedSec)}</span>
+              <span className="text-slate-400">
+                지문 {passageWords}단어
+              </span>
+            </div>
+          )}
+          {recordedSec > 0 &&
+            passageWords > 0 &&
+            recordedSec < passageWords * MIN_SEC_PER_WORD && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                ⚠️ 지문 길이에 비해 <b>녹음이 짧아요.</b> 끝까지 다 읽었는지
+                들어보고, 빠뜨린 부분이 있으면 <b>다시 녹음</b>해 주세요.
+                <br />
+                (끝까지 읽지 않으면 점수가 크게 낮아져요)
+              </p>
+            )}
           <audio src={audioUrl} controls className="w-full" />
           <div className="flex gap-2">
             <button

@@ -17,6 +17,8 @@ export default function PassageComposer({ classId }: { classId: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [excluded, setExcluded] = useState<Excluded[]>([]);
   const [aiRan, setAiRan] = useState(false);
+  // 반 수준에 따라 문장 수를 10~15개에서 고른다
+  const [sentenceLimit, setSentenceLimit] = useState(10);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export default function PassageComposer({ classId }: { classId: string }) {
       const res = await fetch("/api/teacher/select-sentences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: source }),
+        body: JSON.stringify({ text: source, limit: sentenceLimit }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "문장 선별 실패");
@@ -151,26 +153,48 @@ export default function PassageComposer({ classId }: { classId: string }) {
         placeholder={
           mode === "pdf"
             ? "PDF를 올리면 여기에 본문이 채워져요. 필요하면 직접 수정할 수 있어요."
-            : "교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 AI가 핵심 10문장을 골라줍니다."
+            : `교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 AI가 핵심 ${sentenceLimit}문장을 골라줍니다.`
         }
         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
       />
 
       {/* 2. AI 문장 선별 */}
-      <button
-        type="button"
-        onClick={runAI}
-        disabled={aiLoading || passageSourceEmpty()}
-        className="w-full rounded-lg border border-brand bg-brand-light py-2 text-sm font-semibold text-brand transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {aiLoading
-          ? "AI가 문장 고르는 중… (십여 초)"
-          : "✨ AI로 중요한 10문장 뽑기"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-slate-500">
+          문장 수
+          <select
+            value={sentenceLimit}
+            onChange={(e) => setSentenceLimit(Number(e.target.value))}
+            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
+          >
+            {[10, 11, 12, 13, 14, 15].map((n) => (
+              <option key={n} value={n}>
+                {n}문장
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={runAI}
+          disabled={aiLoading || passageSourceEmpty()}
+          className="min-w-0 flex-1 rounded-lg border border-brand bg-brand-light py-2 text-sm font-semibold text-brand transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {aiLoading
+            ? "AI가 문장 고르는 중… (십여 초)"
+            : `✨ AI로 중요한 ${sentenceLimit}문장 뽑기`}
+        </button>
+      </div>
       <p className="text-[11px] text-slate-400">
         초6에게 너무 어려운 단어·고유명사가 든 문장은 자동으로 제외돼요. 뽑은 뒤
         직접 지우거나 고칠 수 있어요.
       </p>
+      {sentenceLimit > 12 && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+          ⏱️ 문장이 많으면 학생 녹음이 <b>3분을 넘길 수 있어요.</b> 읽기가 익숙한
+          반에 쓰시고, 학생에게는 <b>끝까지 쉬지 않고</b> 읽도록 안내해 주세요.
+        </p>
+      )}
 
       {/* 선별된 문장 목록 */}
       {aiRan && (

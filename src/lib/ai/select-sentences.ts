@@ -1,16 +1,27 @@
 import "server-only";
 import { logUsage } from "../usage";
 
+// 선생님이 고를 수 있는 문장 수 범위. 반 수준에 따라 늘려 쓴다.
+export const MIN_SENTENCES = 10;
+export const MAX_SENTENCES = 15;
+
+// 범위를 벗어난 값(클라이언트가 보낸 값 포함)을 안전하게 가둔다
+export function clampSentenceLimit(v: unknown): number {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return MIN_SENTENCES;
+  return Math.min(MAX_SENTENCES, Math.max(MIN_SENTENCES, n));
+}
+
 export interface SentenceSelection {
-  selected: string[]; // 과제로 추릴 문장(원문 그대로), 최대 10개
+  selected: string[]; // 과제로 추릴 문장(원문 그대로), 최대 limit 개
   excluded: { sentence: string; reason: string }[]; // 제외된 대표 문장 + 사유
 }
 
-// 교과서 본문(수십 문장)에서 초6 스피킹 과제에 적합한 핵심 문장 10개를 선별.
+// 교과서 본문(수십 문장)에서 초6 스피킹 과제에 적합한 핵심 문장을 limit 개 선별.
 // 너무 어려운 단어/고유명사/외국어가 포함된 문장은 제외한다.
 export async function selectSentences(
   sourceText: string,
-  limit = 10
+  limit: number = MIN_SENTENCES
 ): Promise<SentenceSelection> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY 가 설정되지 않았습니다.");

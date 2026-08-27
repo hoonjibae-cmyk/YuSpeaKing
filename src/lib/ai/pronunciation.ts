@@ -4,7 +4,10 @@ import type { AzureScores } from "../types";
 import { logUsage } from "../usage";
 
 // 인식 상한. Vercel Pro(최대 300초) 기준으로 넉넉히 잡아 긴 녹음도 끝까지 인식한다.
-const AZURE_TIMEOUT_MS = 180_000;
+// 과제를 15문장까지 낼 수 있게 되면서 녹음이 3분을 넘길 수 있어 상한을 올렸다.
+// 점수는 인식이 끝나는 즉시 저장하므로(피드백 생성은 그 뒤) 300초 안에서
+// 다운로드·저장에 쓸 여유를 60초 남긴다.
+const AZURE_TIMEOUT_MS = 240_000;
 
 type WordResult = { word: string; accuracy: number; errorType?: string };
 type Segment = {

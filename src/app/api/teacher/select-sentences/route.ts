@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { selectSentences } from "@/lib/ai/select-sentences";
+import {
+  selectSentences,
+  clampSentenceLimit,
+} from "@/lib/ai/select-sentences";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 본문 텍스트 → AI가 초6 난이도·고유명사 필터로 핵심 10문장 선별 (교사 인증 필요)
+// 본문 텍스트 → AI가 초6 난이도·고유명사 필터로 핵심 문장 선별 (교사 인증 필요)
 export async function POST(req: Request) {
   const supabase = createClient();
   const {
@@ -16,8 +19,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "로그인이 필요해요." }, { status: 401 });
   }
 
-  const { text } = (await req.json().catch(() => ({}))) as { text?: string };
+  const { text, limit } = (await req.json().catch(() => ({}))) as {
+    text?: string;
+    limit?: number;
+  };
   const source = String(text ?? "").trim();
+  // 클라이언트 값을 그대로 믿지 않고 허용 범위로 가둔다
+  const count = clampSentenceLimit(limit);
   if (source.length < 20) {
     return NextResponse.json(
       { error: "본문이 너무 짧아요. 지문을 붙여넣거나 PDF를 올려 주세요." },
@@ -26,7 +34,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await selectSentences(source, 10);
+    const result = await selectSentences(source, count);
     if (result.selected.length === 0) {
       return NextResponse.json(
         {

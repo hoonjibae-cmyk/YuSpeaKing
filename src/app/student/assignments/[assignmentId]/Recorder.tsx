@@ -1,12 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { blobToWav16kMono } from "@/lib/wav-client";
 import { createClient } from "@/lib/supabase/client";
 
 // 서버가 이유를 알려 준 오류. 재시도해도 결과가 같으므로 즉시 학생에게 보여 준다.
 class SubmitError extends Error {}
+
+// 녹음 상한. 15문장 과제도 3분 안팎이면 충분한데, 학생이 중지를 깜빡하고
+// 그대로 두면 파일만 커지고 채점도 오래 걸린다. 넉넉히 두되 자동으로 멈춘다.
+const MAX_RECORD_SEC = 360; // 6분
+// 이 시점부터 남은 시간을 알려 준다
+const WARN_AT_SEC = MAX_RECORD_SEC - 60;
+
+function mmss(sec: number) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 type Phase =
   | "idle"
@@ -31,7 +43,10 @@ export default function Recorder({
   const [error, setError] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
+  const [elapsed, setElapsed] = useState(0);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const blobRef = useRef<Blob | null>(null);
 
@@ -45,6 +60,10 @@ export default function Recorder({
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mr.onstop = () => {
+        if (tickRef.current) {
+          clearInterval(tickRef.current);
+          tickRef.current = null;
+        }
         // iOS Safari는 webm 재생을 못 하므로 실제 녹음 포맷(mr.mimeType)으로 라벨링해야
         // 미리듣기 <audio>가 정상 재생된다. (하드코딩 시 "오류" 표시)
         const type = mr.mimeType || "audio/webm";
@@ -56,6 +75,8 @@ export default function Recorder({
       };
       mediaRecorderRef.current = mr;
       mr.start();
+      setElapsed(0);
+      tickRef.current = setInterval(() => setElapsed((v) => v + 1), 1000);
       setPhase("recording");
     } catch {
       setError("마이크를 사용할 수 없어요. 브라우저 권한을 확인해 주세요.");
@@ -66,6 +87,19 @@ export default function Recorder({
   function stopRecording() {
     mediaRecorderRef.current?.stop();
   }
+
+  // 상한에 닿으면 자동으로 멈춘다 (녹음한 내용은 그대로 남는다)
+  useEffect(() => {
+    if (phase === "recording" && elapsed >= MAX_RECORD_SEC) stopRecording();
+  }, [phase, elapsed]);
+
+  // 화면을 벗어날 때 타이머 정리
+  useEffect(
+    () => () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+    },
+    []
+  );
 
   function onFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -276,12 +310,20 @@ export default function Recorder({
       )}
 
       {phase === "recording" && (
-        <button
-          onClick={stopRecording}
-          className="w-full animate-pulse rounded-2xl bg-slate-800 py-5 text-lg font-semibold text-white"
-        >
-          ⏹ 녹음 중지 (말하는 중...)
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={stopRecording}
+            className="w-full animate-pulse rounded-2xl bg-slate-800 py-5 text-lg font-semibold text-white"
+          >
+            ⏹ 녹음 중지 · {mmss(elapsed)}
+          </button>
+          {elapsed >= WARN_AT_SEC && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700">
+              ⏱️ {mmss(MAX_RECORD_SEC - elapsed)} 뒤에 녹음이 자동으로 멈춰요.
+              다 읽었으면 중지를 눌러 주세요.
+            </p>
+          )}
+        </div>
       )}
 
       {phase === "recorded" && audioUrl && (

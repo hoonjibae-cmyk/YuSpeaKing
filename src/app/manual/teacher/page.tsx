@@ -1,6 +1,5 @@
+import { ManualShell, Section, GuideScreen } from "@/components/TeacherGuideLayout";
 import {
-  ManualShell,
-  Section,
   Step,
   Tip,
   Warn,
@@ -51,6 +50,8 @@ export default function TeacherManualPage() {
 
       {/* 2. 반 만들기 */}
       <Section no={2} title="반 만들기와 학생 등록">
+        <GuideScreen name="dashboard" title="01 · 내 반 관리" caption="대시보드에서 담당 반을 선택합니다. 새 반 만들기와 공지·쿠폰 등 관리 메뉴도 이곳에서 시작합니다." />
+        <GuideScreen name="class" title="02 · 학생 승인과 반 관리" caption="학생 가입 링크를 공유한 뒤 가입 신청 대기에서 정보를 확인하고 승인합니다. 아래에서 학생 명단과 과제를 관리합니다." />
         <Step no={1} title="반 만들기">
           선생님 대시보드의 <b>새 반 만들기</b>에 반 이름(예: 6학년 A반)을 적고
           만들기를 누릅니다.
@@ -92,6 +93,7 @@ export default function TeacherManualPage() {
 
       {/* 3. 과제 등록 */}
       <Section no={3} title="과제(지문) 등록하기">
+        <GuideScreen name="composer" title="03 · 새 지문 등록" caption="새 지문 등록을 펼친 화면입니다. 본문 직접 입력 또는 PDF 업로드로 시작하고, 과제 제목·음성·마감일을 설정합니다." />
         <Step no={1} title="새 지문 등록 열기">
           반 화면 오른쪽 <b>+ 새 지문 등록</b>을 누릅니다.
         </Step>
@@ -132,6 +134,7 @@ export default function TeacherManualPage() {
 
       {/* 4. 제출 확인 */}
       <Section no={4} title="학생 제출 확인하기">
+        <GuideScreen name="submissions" title="04 · 제출 현황 확인" caption="상단에서 제출률과 평균을 확인하고, 학생별 평가완료·미제출 상태를 살펴봅니다. 상세 리포트 열기를 누르면 세부 점수와 피드백이 펼쳐집니다." />
         <Step no={1} title="과제 카드에서 [제출 내역 보기] 클릭">
           반 화면의 과제 카드마다 마감일과 <b>진행중 / 마감</b> 상태, 제출 인원,
           평균 점수가 표시됩니다. 카드를 누르면 상세 화면으로 갑니다.
@@ -180,6 +183,7 @@ export default function TeacherManualPage() {
 
       {/* 5. 점수 이해 */}
       <Section no={5} title="점수 읽는 법">
+        <GuideScreen name="detail" title="05 · 상세 리포트" caption="학생의 상세 리포트를 펼쳐 세부 점수와 피드백을 함께 확인합니다. 예시 점수이며, 실제 학생의 성적이 아닙니다." />
         <Table
           head={["항목", "의미"]}
           rows={[
@@ -405,7 +409,7 @@ export default function TeacherManualPage() {
         <Step no={2} title="이동일을 미리 정할 수도 있어요">
           <b>이동일</b>을 미래 날짜로 두면 그날 <b>자동으로</b> 옮겨집니다. 비워
           두거나 오늘로 두면 즉시 이동합니다. 예약된 이동은{" "}
-          <b>🔀 인수인계</b> 화면에서 확인·취소할 수 있어요.
+          <b>🤝 인수인계</b> 화면에서 확인·취소할 수 있어요.
         </Step>
 
         <p className="pt-2 font-semibold text-slate-700">
@@ -416,7 +420,7 @@ export default function TeacherManualPage() {
           을 누르면 요청이 전송되고, 상대 선생님께 <b>Slack 알림</b>이 갑니다.
         </Step>
         <Step no={2} title="상대 선생님이 수락">
-          받은 선생님이 <b>🔀 인수인계</b> 화면에서 <b>받을 반을 고르고 [수락]</b>{" "}
+          받은 선생님이 <b>🤝 인수인계</b> 화면에서 <b>받을 반을 고르고 [수락]</b>{" "}
           하면 됩니다. 이동일이 오늘이면 바로, 미래면 그날 자동으로 옮겨집니다.
           수락 전까지는 학생이 원래 반에 그대로 있습니다.
         </Step>
@@ -431,7 +435,7 @@ export default function TeacherManualPage() {
             ],
             [
               "다른 선생님 반을 맡아올 때",
-              "[🔀 인수인계] 화면의 [🏫 다른 선생님 반 맡아오기]에서 반을 고르고 요청",
+              "[🤝 인수인계] 화면의 [🏫 다른 선생님 반 맡아오기]에서 반을 고르고 요청",
             ],
           ]}
         />
@@ -454,7 +458,7 @@ export default function TeacherManualPage() {
         </Tip>
 
         <Tip>
-          요청은 <b>[🔀 인수인계]</b> 화면에서 한눈에 봅니다. 받은 요청은 수락/거절,
+          요청은 <b>[🤝 인수인계]</b> 화면에서 한눈에 봅니다. 받은 요청은 수락/거절,
           보낸 요청은 취소할 수 있고, 처리 결과도 Slack으로 알려 드립니다. 받을
           요청이 있으면 대시보드 버튼에 개수가 표시됩니다.
         </Tip>
@@ -536,11 +540,11 @@ export default function TeacherManualPage() {
             ],
             [
               "다른 선생님 반도 볼 수 있나요",
-              "아니요. 선생님은 본인 반만 볼 수 있습니다. 운영자는 전체를 볼 수 있습니다.",
+              "기본적으로 본인 반을 봅니다. 승인된 인수인계 공동 관리 기간에는 해당 반을 함께 관리할 수 있고, 운영자는 전체를 볼 수 있습니다.",
             ],
             [
               "학생에게 매뉴얼을 주고 싶어요",
-              "이 페이지 위쪽 [학생용 보기]를 눌러 그 주소를 공유하시면 됩니다. 인쇄해서 나눠 주셔도 좋습니다.",
+              "이 페이지 위쪽 [학생용 가이드]를 눌러 그 주소를 공유하시면 됩니다. 인쇄해서 나눠 주셔도 좋습니다.",
             ],
           ]}
         />

@@ -1,11 +1,14 @@
 import {
-  ManualShell,
-  Section,
   Step,
   Tip,
   Warn,
   Table,
 } from "@/components/ManualLayout";
+import {
+  GuideScreen,
+  ManualShell,
+  Section,
+} from "@/components/StudentGuideLayout";
 
 export const metadata = {
   title: "학생용 사용 설명서 · 유스피킹",
@@ -76,6 +79,12 @@ export default function StudentManualPage() {
             ],
           ]}
         />
+        <GuideScreen
+          name="home"
+          title="로그인 후 홈 화면"
+          caption="위쪽에서 공지와 지난 과제를 확인하고, 나의 성취·쿠폰함·오늘의 과제를 차례로 볼 수 있어요. 시작할 과제 카드를 누르면 연습 화면으로 이동해요."
+          height={1450}
+        />
       </Section>
 
       {/* 3. 과제하기 */}
@@ -100,6 +109,12 @@ export default function StudentManualPage() {
         <Step no={4} title="제출하기를 눌러요">
           제출하면 AI가 채점을 시작해요. 잠시 기다리면 점수와 피드백이 나와요.
         </Step>
+        <GuideScreen
+          name="assignment"
+          title="듣기·지문·녹음 화면"
+          caption="원어민 발음을 속도별로 듣고 지문을 연습한 뒤, 빨간 ‘지금 녹음하기’ 버튼을 눌러 녹음해요. 미리 녹음한 파일을 올려도 돼요."
+          height={1100}
+        />
         <Warn>
           <b>제출은 과제당 딱 1번만 할 수 있어요.</b> 녹음을 충분히 들어보고
           마음에 들 때 제출하세요. (제출 전에는 몇 번이든 다시 녹음할 수 있어요.)
@@ -130,6 +145,18 @@ export default function StudentManualPage() {
           점수가 낮게 나왔다고 속상해하지 마세요. 피드백에 적힌 <b>연습 팁</b>을
           보고 그 부분만 다시 연습하면 다음 과제에서 훨씬 좋아져요.
         </Tip>
+        <GuideScreen
+          name="result"
+          title="제출 후 AI 발음 피드백"
+          caption="제출이 끝나면 종합 점수와 연습 조언이 나와요. 단어 색을 보고 잘 읽은 부분과 다음에 더 연습할 부분을 확인하세요."
+          height={1550}
+        />
+        <GuideScreen
+          name="history"
+          title="내 스피킹 기록"
+          caption="홈의 ‘내 기록’에서 평균 점수와 점수 변화를 확인할 수 있어요. 과제별 ‘다시 듣기·피드백 보기’를 열면 지난 결과도 다시 볼 수 있어요."
+          height={1000}
+        />
       </Section>
 
       {/* 5. 배지 */}

@@ -3,14 +3,9 @@ import { notFound } from "next/navigation";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { coTaughtClassIds } from "@/lib/transfers";
 import { todayKST, daysAgoKST, TREND_START } from "@/lib/date";
+import { PERIODS, resolvePeriod, trendFrom } from "@/lib/trend";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
-import TrendChart, { type TrendSeries, type TrendPoint } from "./TrendChart";
-
-const PERIODS = [
-  { key: "1m", label: "최근 1개월", days: 30 },
-  { key: "6m", label: "최근 6개월", days: 182 },
-  { key: "1y", label: "최근 1년", days: 365 },
-] as const;
+import TrendChart, { type TrendSeries, type TrendPoint } from "@/components/TrendChart";
 
 export default async function ClassTrendPage({
   params,
@@ -23,13 +18,10 @@ export default async function ClassTrendPage({
     await getTeacherContext();
   const { classId } = params;
 
-  const period =
-    PERIODS.find((p) => p.key === searchParams.p) ?? PERIODS[0];
-
+  const period = resolvePeriod(searchParams.p);
   const today = todayKST();
-  // 기간으로 계산한 시작일과 데이터 시작일 중 더 늦은 쪽부터 그린다
+  const from = trendFrom(period.days);
   const windowStart = daysAgoKST(period.days);
-  const from = windowStart > TREND_START ? windowStart : TREND_START;
 
   const [{ data: klass }, coIds, { data: studentRows }] = await Promise.all([
     db
@@ -125,11 +117,27 @@ export default async function ClassTrendPage({
         ← {klass.name}
       </Link>
 
-      <header className="mt-3">
-        <h1 className="text-xl font-bold sm:text-2xl">📈 성적 추이</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {from} ~ {today} · 채점이 끝난 제출만 표시합니다.
-        </p>
+      <header className="mt-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold sm:text-2xl">📈 성적 추이</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {from} ~ {today} · 채점이 끝난 제출만 표시합니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/teacher/trend?p=${period.key}`}
+            className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            📊 전체 반 비교
+          </Link>
+          <a
+            href={`/api/teacher/export-scores?classId=${classId}&p=${period.key}`}
+            className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            ⬇ CSV 내려받기
+          </a>
+        </div>
       </header>
 
       {/* 기간 선택 */}

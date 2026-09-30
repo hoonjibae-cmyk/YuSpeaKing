@@ -39,11 +39,19 @@ export default function TrendChart({
   classAvg,
   from,
   to,
+  avgLabel = "반 평균",
+  pickHint = "학생 이름을 누르면 그 학생만 선명하게 보여요",
+  showNumber = true,
 }: {
   series: TrendSeries[];
   classAvg: TrendPoint[];
   from: string;
   to: string;
+  /** 굵은 점선의 이름 (반 평균 / 전체 평균) */
+  avgLabel?: string;
+  pickHint?: string;
+  /** 출석번호 칸 표시 여부 (반 비교에서는 번호가 없다) */
+  showNumber?: boolean;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -165,9 +173,9 @@ export default function TrendChart({
       <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-400">
         <span className="flex items-center gap-1">
           <span className="inline-block h-0.5 w-5 border-t-2 border-dashed border-brand" />
-          반 평균
+          {avgLabel}
         </span>
-        <span>학생 이름을 누르면 그 학생만 선명하게 보여요</span>
+        <span>{pickHint}</span>
       </div>
 
       {/* 학생 목록 — 누르면 해당 선만 강조 */}
@@ -188,9 +196,11 @@ export default function TrendChart({
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{ background: color }}
                 />
-                <span className="w-7 shrink-0 text-xs text-slate-400">
-                  {s.number ?? "-"}
-                </span>
+                {showNumber && (
+                  <span className="w-7 shrink-0 text-xs text-slate-400">
+                    {s.number ?? "-"}
+                  </span>
+                )}
                 <span className="min-w-0 flex-1 truncate text-sm">{s.name}</span>
                 {s.points.length === 0 ? (
                   <span className="text-xs text-slate-300">제출 없음</span>

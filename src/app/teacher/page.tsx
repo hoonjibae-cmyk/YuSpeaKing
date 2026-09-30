@@ -108,6 +108,12 @@ export default async function TeacherDashboard({
             📢 공지사항
           </Link>
           <Link
+            href="/teacher/trend"
+            className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+          >
+            📊 성적 추이
+          </Link>
+          <Link
             href="/teacher/coupons"
             className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           >

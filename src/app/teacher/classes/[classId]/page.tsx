@@ -181,6 +181,12 @@ export default async function ClassDetailPage({
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="truncate text-xl font-bold sm:text-2xl">{klass.name}</h1>
           <Link
+            href={`/teacher/classes/${classId}/trend`}
+            className="whitespace-nowrap rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+          >
+            📈 성적 추이
+          </Link>
+          <Link
             href={`/teacher/classes/${classId}/monthly`}
             className="whitespace-nowrap rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
           >

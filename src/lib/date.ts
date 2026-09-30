@@ -34,3 +34,7 @@ export function archiveCutoffKST(): string {
 export function daysUntilArchive(dueDate: string, today: string): number {
   return ARCHIVE_AFTER_DAYS - Math.floor((dayMs(today) - dayMs(dueDate)) / MS_PER_DAY);
 }
+
+// 성적 추이 그래프가 다루는 가장 이른 날짜.
+// 이전 데이터는 채점 기준이 여러 번 바뀌어 같은 선으로 잇기에 적절하지 않다.
+export const TREND_START = "2026-09-01";

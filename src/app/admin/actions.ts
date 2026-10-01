@@ -93,9 +93,9 @@ export async function saveAiModel(formData: FormData) {
   redirect("/admin/settings?saved=1");
 }
 
-// ---------- HR manager 반 매칭 ----------
+// ---------- Student Card 반 매칭 ----------
 
-// 유스피킹 반 ↔ HR manager 반 잇기.
+// 유스피킹 반 ↔ Student Card 반 잇기.
 // 이름이 서로 달라도 여기서 한 번 이어 두면 그 뒤로는 ID 로 따라간다.
 export async function linkHrClass(formData: FormData) {
   const me = await requireAdmin();
@@ -113,13 +113,15 @@ export async function linkHrClass(formData: FormData) {
     redirect("/admin/hr?done=" + encodeURIComponent("연결을 해제했어요."));
   }
 
-  let hrName: string | null = null;
+  let hrName: string;
   try {
-    hrName =
-      (await fetchHrClasses()).find((c) => c.hrClassId === hrClassId)?.name ??
-      null;
-  } catch {
-    // 이름은 보기 좋게 하려는 값이라, 못 가져와도 연결은 진행한다
+    const selected = (await fetchHrClasses()).find((c) => c.hrClassId === hrClassId);
+    if (!selected) throw new Error("Student Card에서 선택한 반을 찾지 못했습니다.");
+    hrName = selected.name;
+  } catch (error) {
+    redirect("/admin/hr?error=" + encodeURIComponent(
+      error instanceof Error ? error.message : "Student Card 반 목록 조회 실패",
+    ));
   }
 
   // hr_class_id 에 unique 가 걸려 있다 — 다른 반이 이미 쓰고 있으면 알린다
@@ -133,7 +135,7 @@ export async function linkHrClass(formData: FormData) {
     redirect(
       "/admin/hr?error=" +
         encodeURIComponent(
-          "그 HR manager 반은 이미 다른 반과 이어져 있어요. 먼저 해제해 주세요.",
+          "그 Student Card 반은 이미 다른 반과 이어져 있어요. 먼저 해제해 주세요.",
         ),
     );
   }
@@ -184,7 +186,7 @@ export async function syncAllRosters() {
     redirect(
       "/admin/hr?error=" +
         encodeURIComponent(
-          "HR_API_BASE / HR_API_KEY 환경변수를 먼저 등록해 주세요.",
+          "STUDENT_CARD_ROSTER_KEY 환경변수를 먼저 등록해 주세요.",
         ),
     );
   }

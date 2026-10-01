@@ -80,7 +80,7 @@ export default async function TeacherRosterPage({
         <div>
           <h1 className="text-xl font-bold sm:text-2xl">🧾 명단 확인</h1>
           <p className="mt-1 text-sm text-slate-500">
-            HR manager 명단과 비교해 등록되지 않은 학생을 알려 드려요.
+            Student Card 명단과 비교해 등록되지 않은 학생을 알려 드려요.
           </p>
         </div>
         {hrConfigured() && (
@@ -108,13 +108,13 @@ export default async function TeacherRosterPage({
 
       {!hrConfigured() && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          ⚠️ HR manager 연동이 아직 설정되지 않았어요. 운영자에게 문의해 주세요.
+          ⚠️ Student Card 연동이 아직 설정되지 않았어요. 운영자에게 문의해 주세요.
         </p>
       )}
 
       {unlinked.length > 0 && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          🔗 아직 HR manager 반과 이어지지 않은 반이 있어요 —{" "}
+          🔗 아직 Student Card 반과 이어지지 않은 반이 있어요 —{" "}
           <b>{unlinked.map((c) => c.name).join(", ")}</b>. 운영자가 이어 주면
           명단을 자동으로 받아옵니다.
         </p>
@@ -149,8 +149,8 @@ export default async function TeacherRosterPage({
 
               <p className="mt-1.5 text-xs text-slate-500">
                 {p.kind === "ambiguous"
-                  ? "유스피킹의 같은 이름 학생과 자동으로 잇지 못했어요. 이름을 HR manager 와 똑같이 맞춰 주시면 다음 확인 때 연결됩니다."
-                  : "HR manager 명단에는 있는데 유스피킹에 아직 없는 학생이에요."}
+                  ? "유스피킹의 같은 이름 학생과 자동으로 잇지 못했어요. 이름을 Student Card 와 똑같이 맞춰 주시면 다음 확인 때 연결됩니다."
+                  : "Student Card 명단에는 있는데 유스피킹에 아직 없는 학생이에요."}
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">

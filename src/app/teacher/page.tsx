@@ -47,7 +47,7 @@ export default async function TeacherDashboard({
       .select("coupon_goal, coupon_reward_text")
       .eq("id", effectiveId)
       .single(),
-    // HR manager 명단과 비교해 등록이 필요한 학생 수 (저장된 값만 읽는다)
+    // Student Card 명단과 비교해 등록이 필요한 학생 수 (저장된 값만 읽는다)
     pendingCountForTeacher(effectiveId),
     // 적용일이 된 예약 이동 반영 (결과를 기다릴 필요는 없지만 같이 태운다)
     applyDueTransfers(),
@@ -184,7 +184,7 @@ export default async function TeacherDashboard({
         </p>
       )}
 
-      {/* HR manager 명단에 있는데 유스피킹에 아직 없는 학생 알림 */}
+      {/* Student Card 명단에 있는데 유스피킹에 아직 없는 학생 알림 */}
       {pendingRoster > 0 && (
         <Link
           href="/teacher/roster"

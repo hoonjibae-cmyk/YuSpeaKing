@@ -1,98 +1,84 @@
 import "server-only";
 import type { HrStudent } from "./match";
 
-// ============================================================
-//  HR manager 연동 어댑터
-//
-//  ⚠️ 이 파일만 실제 API 규격에 맞춰 채우면 나머지는 그대로 돌아간다.
-//     아래 두 함수가 돌려주는 모양만 지키면 된다.
-//
-//  필요한 환경변수
-//    HR_API_BASE   예: https://hr.yussam.com/api
-//    HR_API_KEY    인증 키
-// ============================================================
+// Student Card is the canonical source of current classes and enrolled students.
+// The old Hr* names are retained inside YuSpeaKing for database compatibility.
+const ROSTER_URL = "https://card.yussam.com/api/integrations/yuspeaking";
+const CLASS_ID = /^(?:aca:\d+|legacy:[a-f0-9]{64})$/;
 
 export interface HrClass {
   hrClassId: string;
   name: string;
-  /** HR 쪽 담당 선생님 식별값 (이메일 또는 사번). 매칭 확인용 */
-  teacherEmail?: string | null;
+  teacherName?: string | null;
 }
 
 export function hrConfigured(): boolean {
-  return Boolean(process.env.HR_API_BASE && process.env.HR_API_KEY);
+  return (process.env.STUDENT_CARD_ROSTER_KEY?.length ?? 0) >= 32;
 }
 
-class HrNotConfigured extends Error {
-  constructor() {
-    super(
-      "HR manager 연동이 설정되지 않았어요. HR_API_BASE / HR_API_KEY 를 등록해 주세요.",
-    );
+async function cardFetch(path: string): Promise<unknown> {
+  if (!hrConfigured()) {
+    throw new Error("Student Card 연동이 설정되지 않았어요. 운영자에게 문의해 주세요.");
   }
-}
-
-async function hrFetch<T>(path: string): Promise<T> {
-  if (!hrConfigured()) throw new HrNotConfigured();
-  const base = process.env.HR_API_BASE!.replace(/\/$/, "");
-
-  const res = await fetch(`${base}${path}`, {
+  const response = await fetch(`${ROSTER_URL}${path}`, {
     headers: {
-      Authorization: `Bearer ${process.env.HR_API_KEY}`,
+      "x-yuspeaking-roster-key": process.env.STUDENT_CARD_ROSTER_KEY!,
       Accept: "application/json",
     },
-    // 명단은 자주 바뀌지 않지만, 동기화는 최신값을 봐야 한다
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`HR manager 응답 ${res.status} ${detail.slice(0, 200)}`);
+  if (!response.ok) {
+    throw new Error(`Student Card 명단 조회 실패 (${response.status})`);
   }
-  return (await res.json()) as T;
+  return response.json();
 }
 
-// 반 목록. 운영자가 유스피킹 반과 이어 줄 때 쓴다.
-//
-// TODO: 실제 엔드포인트·응답 필드에 맞춰 경로와 매핑을 고칠 것.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function completeItems(value: unknown, field: string): unknown[] {
+  if (!isRecord(value) || value.ok !== true || value.complete !== true || !Array.isArray(value[field])) {
+    throw new Error("Student Card 명단 응답 형식이 올바르지 않습니다.");
+  }
+  return value[field] as unknown[];
+}
+
 export async function fetchHrClasses(): Promise<HrClass[]> {
-  const raw = await hrFetch<
-    Array<{
-      id?: string | number;
-      classId?: string | number;
-      name?: string;
-      className?: string;
-      teacherEmail?: string;
-    }>
-  >("/classes");
-
-  return (Array.isArray(raw) ? raw : []).map((c) => ({
-    hrClassId: String(c.id ?? c.classId ?? ""),
-    name: String(c.name ?? c.className ?? ""),
-    teacherEmail: c.teacherEmail ?? null,
-  }));
+  const classes = completeItems(await cardFetch("/classes"), "classes");
+  return classes.map((value) => {
+    if (!isRecord(value) || typeof value.id !== "string" || !CLASS_ID.test(value.id)
+      || typeof value.name !== "string" || !value.name.trim()) {
+      throw new Error("Student Card 반 목록에 잘못된 항목이 있습니다.");
+    }
+    return {
+      hrClassId: value.id,
+      name: value.name.trim(),
+      teacherName: typeof value.teacherName === "string" ? value.teacherName : null,
+    };
+  });
 }
 
-// 한 반의 학생 명단 + 연락처.
-//
-// TODO: 실제 엔드포인트·응답 필드에 맞춰 경로와 매핑을 고칠 것.
 export async function fetchHrStudents(hrClassId: string): Promise<HrStudent[]> {
-  const raw = await hrFetch<
-    Array<{
-      id?: string | number;
-      studentId?: string | number;
-      name?: string;
-      studentName?: string;
-      phone?: string;
-      studentPhone?: string;
-      parentPhone?: string;
-      guardianPhone?: string;
-    }>
-  >(`/classes/${encodeURIComponent(hrClassId)}/students`);
-
-  return (Array.isArray(raw) ? raw : []).map((s) => ({
-    hrId: String(s.id ?? s.studentId ?? ""),
-    name: String(s.name ?? s.studentName ?? "").trim(),
-    studentPhone: s.studentPhone ?? s.phone ?? null,
-    parentPhone: s.parentPhone ?? s.guardianPhone ?? null,
-  }));
+  if (!CLASS_ID.test(hrClassId)) throw new Error("Student Card 반 ID 형식이 올바르지 않습니다.");
+  const raw = await cardFetch(`/classes/${encodeURIComponent(hrClassId)}/students`);
+  if (!isRecord(raw) || raw.classId !== hrClassId) {
+    throw new Error("Student Card 반 명단의 ID가 요청한 반과 다릅니다.");
+  }
+  const students = completeItems(raw, "students");
+  return students.map((value) => {
+    if (!isRecord(value) || !/^\d+$/.test(String(value.id ?? ""))
+      || typeof value.name !== "string" || !value.name.trim()
+      || (value.studentPhone != null && typeof value.studentPhone !== "string")
+      || (value.parentPhone != null && typeof value.parentPhone !== "string")) {
+      throw new Error("Student Card 학생 명단에 잘못된 항목이 있습니다.");
+    }
+    return {
+      hrId: String(value.id),
+      name: value.name.trim(),
+      studentPhone: typeof value.studentPhone === "string" ? value.studentPhone : null,
+      parentPhone: typeof value.parentPhone === "string" ? value.parentPhone : null,
+    };
+  });
 }

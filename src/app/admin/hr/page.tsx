@@ -67,7 +67,7 @@ export default async function AdminHrPage({
     }
   }
 
-  // HR manager 반 목록. 못 가져오면 화면은 그대로 두고 이유만 알린다.
+  // Student Card 반 목록. 못 가져오면 화면은 그대로 두고 이유만 알린다.
   let hrClasses: HrClass[] = [];
   let hrError: string | null = null;
   if (hrConfigured()) {
@@ -123,7 +123,7 @@ export default async function AdminHrPage({
           <div>
             <h1 className="text-2xl font-bold text-brand">반 매칭</h1>
             <p className="text-sm text-slate-500">
-              유스피킹 반 ↔ HR manager 반을 이어 주면 학생 명단과 연락처를
+              유스피킹 반 ↔ Student Card 반을 이어 주면 학생 명단과 연락처를
               자동으로 받아옵니다.
             </p>
           </div>
@@ -153,14 +153,13 @@ export default async function AdminHrPage({
 
       {!hrConfigured() && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          ⚠️ HR manager 연동이 아직 설정되지 않았어요. Vercel 환경변수{" "}
-          <b className="font-mono text-xs">HR_API_BASE</b> ·{" "}
-          <b className="font-mono text-xs">HR_API_KEY</b> 를 등록해 주세요.
+          ⚠️ Student Card 연동이 아직 설정되지 않았어요. Vercel 환경변수{" "}
+          <b className="font-mono text-xs">STUDENT_CARD_ROSTER_KEY</b> 를 등록해 주세요.
         </p>
       )}
       {hrError && (
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-          HR manager 반 목록을 받아오지 못했어요 — {hrError}
+          Student Card 반 목록을 받아오지 못했어요 — {hrError}
         </p>
       )}
 
@@ -178,7 +177,7 @@ export default async function AdminHrPage({
               timeZone: "Asia/Seoul",
             })
           : "없음"}
-        {hrClasses.length > 0 && ` · HR manager 반 ${hrClasses.length}개`}
+        {hrClasses.length > 0 && ` · Student Card 반 ${hrClasses.length}개`}
       </p>
 
       <ul className="mt-5 space-y-2">
@@ -229,7 +228,7 @@ export default async function AdminHrPage({
                 {hrClasses.map((h) => (
                   <option key={h.hrClassId} value={h.hrClassId}>
                     {h.name}
-                    {h.teacherEmail ? ` (${h.teacherEmail})` : ""}
+                    {h.teacherName ? ` (${h.teacherName})` : ""}
                     {usedHr.has(h.hrClassId) &&
                     h.hrClassId !== r.link?.hr_class_id
                       ? " · 다른 반에 연결됨"
@@ -261,7 +260,7 @@ export default async function AdminHrPage({
 
       <p className="mt-4 text-[11px] text-slate-400">
         · 한 번 이어 두면 반 이름을 바꿔도 연결은 유지됩니다.
-        <br />· 학생은 이름으로 맞추되, HR manager 쪽 이름 뒤 구분자(예:
+        <br />· 학생은 이름으로 맞추되, Student Card 쪽 이름 뒤 구분자(예:
         홍길동A)는 같은 이름 후보가 하나뿐일 때만 자동으로 잇습니다.
         <br />· 명단은 매일 새벽에 자동으로 다시 받아옵니다.
       </p>

@@ -5,7 +5,11 @@ import { gatherMonthly, currentMonth } from "@/lib/monthly";
 import {
   generateMonthlyDraft,
   saveMonthlyReport,
+  shareMonthlyReport,
 } from "@/app/teacher/actions";
+import MonthlyTrend from "@/components/MonthlyTrend";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import { appOrigin } from "@/lib/app-url";
 import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -49,10 +53,14 @@ export default async function StudentMonthlyPage({
 
   const { data: report } = await db
     .from("monthly_reports")
-    .select("content, updated_at")
+    .select("content, updated_at, share_token")
     .eq("student_id", studentId)
     .eq("year_month", month)
     .maybeSingle();
+
+  const shareToken = (report as { share_token?: string | null } | null)
+    ?.share_token;
+  const shareUrl = shareToken ? `${appOrigin()}/report/${shareToken}` : null;
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -94,18 +102,19 @@ export default async function StudentMonthlyPage({
         <Stat label="취약단어" value={`${data.weakWords.length}개`} />
       </section>
 
-      {/* 신입생: 제출률이 등록 이후 과제 기준임을 알린다 */}
-      {(data.joinedThisMonth || data.beforeJoinCount > 0) && data.approvedAt && (
-        <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          🎒 {data.approvedAt} 등록
-          {data.joinedThisMonth ? " (이번 달 등록한 신입생)" : ""} · 제출률은{" "}
-          <b>등록 이후 출제된 과제</b>만으로 계산했어요
-          {data.beforeJoinCount > 0
-            ? ` (등록 전 과제 ${data.beforeJoinCount}개 제외)`
-            : ""}
-          . AI 초안도 이 점을 반영합니다.
+      {/* 선생님만 보는 안내. 리포트 본문에는 등록 관련 내용이 들어가지 않는다. */}
+      {data.beforeJoinCount > 0 && (
+        <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          제출률은 <b>등록 이후 출제된 과제</b>만으로 계산했어요 (이전 과제{" "}
+          {data.beforeJoinCount}개 제외). 이 내용은 학부모께 가는 리포트에는
+          들어가지 않습니다.
         </p>
       )}
+
+      {/* 이 달 점수 흐름 — 학부모 링크에도 같은 그래프가 들어간다 */}
+      <div className="mt-4">
+        <MonthlyTrend items={data.items} />
+      </div>
 
       {data.weakWords.length > 0 && (
         <p className="mt-2 text-sm text-slate-500">
@@ -185,6 +194,59 @@ export default async function StudentMonthlyPage({
           </div>
         </div>
       </form>
+
+      {/* 학부모께 보낼 웹링크 */}
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">
+          🔗 학부모 발송용 링크
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          링크를 열면 위 코멘트와 <b>점수 흐름 그래프</b>, 과제별 기록이 보입니다.
+          저장한 내용이 그대로 나가니 <b>다듬은 뒤 발급</b>해 주세요.
+        </p>
+
+        {shareUrl ? (
+          <>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                id="report-link"
+                readOnly
+                value={shareUrl}
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+              />
+              <CopyButton
+                targetId="report-link"
+                className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+              />
+            </div>
+            <form action={shareMonthlyReport} className="mt-2">
+              <input type="hidden" name="studentId" value={studentId} />
+              <input type="hidden" name="month" value={month} />
+              <ConfirmSubmitButton
+                message={"링크를 새로 만들까요?\n\n기존에 학부모께 보낸 링크는 즉시 열리지 않게 됩니다."}
+                className="text-xs text-slate-400 hover:text-brand"
+              >
+                링크 재발급
+              </ConfirmSubmitButton>
+            </form>
+            <p className="mt-2 text-[11px] text-slate-400">
+              리포트를 수정해 저장하면 <b>같은 링크에 바로 반영</b>됩니다. 링크를
+              다시 보낼 필요는 없어요.
+            </p>
+          </>
+        ) : (
+          <form action={shareMonthlyReport} className="mt-3">
+            <input type="hidden" name="studentId" value={studentId} />
+            <input type="hidden" name="month" value={month} />
+            <SubmitButton
+              pendingText="발급 중…"
+              className="rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+            >
+              링크 발급
+            </SubmitButton>
+          </form>
+        )}
+      </section>
     </main>
   );
 }

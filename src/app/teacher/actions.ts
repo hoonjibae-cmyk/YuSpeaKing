@@ -1204,6 +1204,38 @@ export async function generateMonthlyDraft(formData: FormData) {
 }
 
 // 월말 리포트 저장(수정)
+// 월말 리포트 공유 링크 발급 / 재발급.
+// 선생님이 직접 누를 때만 링크가 생기므로, 다듬기 전의 초안이 새어 나가지 않는다.
+export async function shareMonthlyReport(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const studentId = String(formData.get("studentId") || "");
+  const month = String(formData.get("month") || "");
+  const student = await ownedStudent(db, effectiveId, studentId);
+  if (!student || !month) redirect("/teacher");
+
+  const { data: row } = await db
+    .from("monthly_reports")
+    .select("content")
+    .eq("student_id", studentId)
+    .eq("year_month", month)
+    .maybeSingle();
+  if (!row?.content?.trim()) {
+    redirect(
+      `/teacher/students/${studentId}/monthly?month=${month}&error=${encodeURIComponent(
+        "리포트 내용을 먼저 저장해 주세요"
+      )}`
+    );
+  }
+
+  await db
+    .from("monthly_reports")
+    .update({ share_token: crypto.randomUUID().replace(/-/g, "") })
+    .eq("student_id", studentId)
+    .eq("year_month", month);
+
+  revalidatePath(`/teacher/students/${studentId}/monthly`);
+}
+
 export async function saveMonthlyReport(formData: FormData) {
   const { db, effectiveId } = await getTeacherContext();
   const studentId = String(formData.get("studentId") || "");

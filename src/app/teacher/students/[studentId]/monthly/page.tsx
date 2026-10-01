@@ -116,16 +116,50 @@ export default async function StudentMonthlyPage({
         <MonthlyTrend items={data.items} />
       </div>
 
-      {data.weakWords.length > 0 && (
-        <p className="mt-2 text-sm text-slate-500">
-          자주 틀린 단어:{" "}
-          {data.weakWords.map((w) => (
-            <span key={w} className="mr-1 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">
-              {w}
-            </span>
+      {/* AI 초안이 보는 재료 — 선생님이 초안을 판단할 때 같이 보시라고 노출 */}
+      <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+        <summary className="cursor-pointer text-slate-600">
+          읽기 특징 (AI 초안이 참고하는 값)
+        </summary>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ["정확도", data.profile.accuracy],
+            ["유창성", data.profile.fluency],
+            ["완성도", data.profile.completeness],
+            ["억양", data.profile.prosody],
+          ].map(([label, v]) => (
+            <div
+              key={label as string}
+              className="rounded-lg bg-slate-50 px-2 py-1.5 text-center"
+            >
+              <div className="text-[11px] text-slate-400">{label}</div>
+              <div className="font-semibold text-slate-700">
+                {v == null ? "-" : (v as number)}
+              </div>
+            </div>
           ))}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          평가된 단어 {data.profile.totalWords}개 중 발음 오류{" "}
+          {data.profile.mispronounced}개 · 빠뜨림 {data.profile.omitted}개 ·
+          끝까지 읽지 못한 녹음 {data.profile.lowCompletenessCount}건
         </p>
-      )}
+        {data.weakDetail.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {data.weakDetail.map((w) => (
+              <li key={w.word} className="flex items-center gap-2 text-xs">
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
+                  {w.word}
+                </span>
+                <span className="text-slate-400">
+                  {w.times}회 · 주로 {w.mostly}
+                  {w.mostly === "발음" ? ` · 정확도 ${w.avgAccuracy}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
 
       {/* 과제별 내역 */}
       <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm">

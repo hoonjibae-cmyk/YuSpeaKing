@@ -25,6 +25,26 @@ export interface MonthlyItem {
   score: number | null;
 }
 
+export interface WeakWord {
+  word: string;
+  times: number; // 틀린 횟수
+  avgAccuracy: number; // 그 단어를 읽었을 때의 평균 정확도
+  mostly: "발음" | "누락"; // 주로 발음이 틀린 쪽인지, 아예 빠뜨린 쪽인지
+}
+
+// 점수 말고 '어떻게 읽는 학생인가'를 보여 주는 값들.
+// 월말 리포트가 숫자를 되풀이하지 않고 읽기의 특징을 쓰도록 하기 위한 재료다.
+export interface SpeakingProfile {
+  accuracy: number | null; // 읽은 단어의 발음 정확도
+  fluency: number | null; // 끊김 없이 이어 읽는 정도
+  completeness: number | null; // 지문을 끝까지 읽는 정도
+  prosody: number | null; // 높낮이·리듬
+  totalWords: number; // 평가된 전체 단어 수
+  mispronounced: number; // 그중 발음이 틀린 단어 수
+  omitted: number; // 그중 빠뜨린 단어 수
+  lowCompletenessCount: number; // 끝까지 읽지 못한 제출 수 (완성도 90 미만)
+}
+
 export interface MonthlyData {
   assigned: number;
   submitted: number;
@@ -34,7 +54,9 @@ export interface MonthlyData {
   lastScore: number | null;
   growth: number | null; // lastScore - firstScore
   items: MonthlyItem[];
-  weakWords: string[]; // 자주 틀린 단어 top
+  weakWords: string[]; // 자주 틀린 단어 top (화면 표시용)
+  weakDetail: WeakWord[]; // 리포트용 상세
+  profile: SpeakingProfile;
   approvedAt: string | null; // 가입 승인일 (YYYY-MM-DD)
   joinedThisMonth: boolean; // 이 달에 등록한 신입생인지
   beforeJoinCount: number; // 등록 이전에 출제되어 집계에서 제외한 과제 수
@@ -118,19 +140,70 @@ export async function gatherMonthly(
   const growth =
     firstScore != null && lastScore != null ? lastScore - firstScore : null;
 
-  // 취약 단어 집계
-  const wordCount = new Map<string, number>();
+  // 단어 단위 집계 — 어떤 단어를, 어떻게 틀렸는지
+  type Acc = { times: number; accSum: number; accN: number; mis: number; om: number };
+  const bag = new Map<string, Acc>();
+  let totalWords = 0;
+  let mispronounced = 0;
+  let omitted = 0;
+
   subs.forEach((s) => {
     (s.azure_scores?.words ?? []).forEach((w) => {
-      if (w.errorType && w.errorType !== "None") {
-        wordCount.set(w.word, (wordCount.get(w.word) ?? 0) + 1);
+      totalWords++;
+      const bad = w.errorType && w.errorType !== "None";
+      if (w.errorType === "Omission") omitted++;
+      else if (w.errorType === "Mispronunciation") mispronounced++;
+      if (!bad) return;
+      // the/The 를 다른 단어로 세지 않는다
+      const key = w.word.toLowerCase();
+      const cur = bag.get(key) ?? { times: 0, accSum: 0, accN: 0, mis: 0, om: 0 };
+      cur.times++;
+      if (w.errorType === "Omission") cur.om++;
+      else {
+        cur.mis++;
+        cur.accSum += Number(w.accuracy) || 0;
+        cur.accN++;
       }
+      bag.set(key, cur);
     });
   });
-  const weakWords = Array.from(wordCount.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([w]) => w);
+
+  const weakDetail: WeakWord[] = Array.from(bag.entries())
+    .sort((a, b) => b[1].times - a[1].times)
+    .slice(0, 10)
+    .map(([word, v]) => ({
+      word,
+      times: v.times,
+      avgAccuracy: v.accN ? Math.round(v.accSum / v.accN) : 0,
+      mostly: v.om > v.mis ? ("누락" as const) : ("발음" as const),
+    }));
+  const weakWords = weakDetail.map((w) => w.word).slice(0, 8);
+
+  // 세부 점수 평균 (채점이 끝난 제출만)
+  const evaluated = subs.filter(
+    (s) => s.status === "evaluated" && s.azure_scores != null
+  );
+  const mean = (pick: (a: AzureScores) => number | undefined) => {
+    const vals = evaluated
+      .map((s) => pick(s.azure_scores as AzureScores))
+      .filter((v): v is number => typeof v === "number");
+    return vals.length
+      ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+      : null;
+  };
+
+  const profile: SpeakingProfile = {
+    accuracy: mean((a) => a.accuracy),
+    fluency: mean((a) => a.fluency),
+    completeness: mean((a) => a.completeness),
+    prosody: mean((a) => a.prosody),
+    totalWords,
+    mispronounced,
+    omitted,
+    lowCompletenessCount: evaluated.filter(
+      (s) => (s.azure_scores as AzureScores).completeness < 90
+    ).length,
+  };
 
   return {
     assigned: list.length,
@@ -142,6 +215,8 @@ export async function gatherMonthly(
     growth,
     items,
     weakWords,
+    weakDetail,
+    profile,
     approvedAt: joinDay,
     joinedThisMonth,
     beforeJoinCount,

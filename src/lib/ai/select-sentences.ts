@@ -1,5 +1,6 @@
 import "server-only";
 import { logUsage } from "../usage";
+import { getAiModel } from "../settings";
 
 // 선생님이 고를 수 있는 문장 수 범위. 반 수준에 따라 늘려 쓴다.
 export const MIN_SENTENCES = 10;
@@ -25,7 +26,7 @@ export async function selectSentences(
 ): Promise<SentenceSelection> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY 가 설정되지 않았습니다.");
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  const model = await getAiModel();
 
   const system = `너는 한국 초등학교 6학년 학생들의 영어 스피킹(소리내어 읽기·발음) 지도를 돕는 교사 보조야.
 교사가 준 영어 교과서 본문(한 챕터, 수십 문장일 수 있음)에서 학생들이 소리내어 읽고 발음 연습을 할

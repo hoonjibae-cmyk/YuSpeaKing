@@ -19,6 +19,7 @@ import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
 import { canGrantCoupons } from "@/lib/coupon-helpers";
+import { normalizePhone, sendAlimtalk } from "@/lib/solapi";
 
 // 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
 async function generateAndStoreSamples(
@@ -1204,6 +1205,217 @@ export async function generateMonthlyDraft(formData: FormData) {
 }
 
 // 월말 리포트 저장(수정)
+// ---------- 반별 월말 리포트 일괄 처리 ----------
+
+// 반 전체 학생의 리포트 초안을 한 번에 만든다.
+// 한 명당 십여 초가 걸려 함수 시간이 모자랄 수 있으므로, 예산 안에서 만들 수
+// 있는 만큼만 만들고 몇 명이 남았는지 알려 준다. 다시 누르면 이어서 만든다.
+const BULK_BUDGET_MS = 240_000;
+
+export async function generateClassMonthlyDrafts(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const month = String(formData.get("month") || "");
+  const redo = String(formData.get("redo") || "") === "1";
+  const back = `/teacher/classes/${classId}/monthly?month=${month}`;
+
+  const { data: klass } = await db
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("teacher_id", effectiveId)
+    .maybeSingle();
+  if (!klass || !month) redirect("/teacher");
+
+  const { data: studentRows } = await db
+    .from("students")
+    .select("id, name, class_id, approved_at")
+    .eq("class_id", classId)
+    .eq("status", "approved")
+    .order("number");
+  const students = (studentRows ?? []) as {
+    id: string;
+    name: string;
+    class_id: string;
+    approved_at: string | null;
+  }[];
+
+  const { data: existing } = await db
+    .from("monthly_reports")
+    .select("student_id, content")
+    .eq("year_month", month)
+    .in("student_id", students.map((s) => s.id));
+  const has = new Set(
+    ((existing ?? []) as { student_id: string; content: string }[])
+      .filter((r) => r.content?.trim())
+      .map((r) => r.student_id)
+  );
+
+  const todo = redo ? students : students.filter((s) => !has.has(s.id));
+
+  const started = Date.now();
+  let made = 0;
+  let failed = 0;
+  for (const st of todo) {
+    if (Date.now() - started > BULK_BUDGET_MS) break;
+    try {
+      const data = await gatherMonthly(
+        db,
+        st.id,
+        st.class_id,
+        month,
+        st.approved_at
+      );
+      const content = await generateMonthlyReportDraft(st.name, month, data);
+      await db
+        .from("monthly_reports")
+        .upsert(
+          { student_id: st.id, year_month: month, content },
+          { onConflict: "student_id,year_month" }
+        );
+      made++;
+    } catch (e) {
+      console.error("[월말리포트] 일괄 생성 실패:", st.name, e);
+      failed++;
+    }
+  }
+
+  const left = todo.length - made - failed;
+  const msg =
+    `초안 ${made}명 작성` +
+    (failed ? ` · ${failed}명 실패` : "") +
+    (left > 0 ? ` · ${left}명 남음 (다시 눌러 주세요)` : "");
+  revalidatePath(back);
+  redirect(`${back}&done=${encodeURIComponent(msg)}`);
+}
+
+// 검토가 끝난 리포트를 학부모께 알림톡으로 보낸다.
+// 선택한 학생만, 링크가 발급되어 있고 연락처가 있는 경우에만 보낸다.
+export async function sendClassReports(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const month = String(formData.get("month") || "");
+  const picked = formData.getAll("studentIds").map(String);
+  const back = `/teacher/classes/${classId}/monthly?month=${month}`;
+
+  const { data: klass } = await db
+    .from("classes")
+    .select("id, name")
+    .eq("id", classId)
+    .eq("teacher_id", effectiveId)
+    .maybeSingle();
+  if (!klass || !month) redirect("/teacher");
+  if (picked.length === 0) {
+    redirect(`${back}&error=${encodeURIComponent("보낼 학생을 선택해 주세요")}`);
+  }
+
+  const { data: studentRows } = await db
+    .from("students")
+    .select("id, name, parent_phone")
+    .eq("class_id", classId)
+    .eq("status", "approved")
+    .in("id", picked);
+  const students = (studentRows ?? []) as {
+    id: string;
+    name: string;
+    parent_phone: string | null;
+  }[];
+
+  const { data: reportRows } = await db
+    .from("monthly_reports")
+    .select("student_id, share_token, content")
+    .eq("year_month", month)
+    .in("student_id", picked);
+  const reports = new Map(
+    ((reportRows ?? []) as {
+      student_id: string;
+      share_token: string | null;
+      content: string;
+    }[]).map((r) => [r.student_id, r])
+  );
+
+  const origin = appOrigin();
+  const [y, m] = month.split("-");
+  const monthLabel = `${Number(y)}년 ${Number(m)}월`;
+
+  const targets: { to: string; variables: Record<string, string> }[] = [];
+  const sentIds: string[] = [];
+  const skipped: string[] = [];
+
+  for (const st of students) {
+    const rep = reports.get(st.id);
+    const phone = normalizePhone(st.parent_phone);
+    if (!rep?.content?.trim() || !rep.share_token) {
+      skipped.push(`${st.name}(링크 없음)`);
+      continue;
+    }
+    if (!phone) {
+      skipped.push(`${st.name}(연락처 없음)`);
+      continue;
+    }
+    targets.push({
+      to: phone,
+      variables: {
+        "#{이름}": st.name,
+        "#{월}": monthLabel,
+        "#{링크}": `${origin}/report/${rep.share_token}`,
+      },
+    });
+    sentIds.push(st.id);
+  }
+
+  if (targets.length === 0) {
+    redirect(
+      `${back}&error=${encodeURIComponent(
+        `보낼 수 있는 학생이 없어요. ${skipped.join(", ")}`
+      )}`
+    );
+  }
+
+  const result = await sendAlimtalk(targets);
+
+  if (result.sent > 0) {
+    await db
+      .from("monthly_reports")
+      .update({ sent_at: new Date().toISOString() })
+      .eq("year_month", month)
+      .in("student_id", sentIds);
+  }
+
+  const parts = [`${result.sent}명 발송`];
+  if (result.failed) parts.push(`${result.failed}명 실패`);
+  if (skipped.length) parts.push(`제외: ${skipped.join(", ")}`);
+  if (result.error) parts.push(result.error);
+
+  revalidatePath(back);
+  redirect(
+    `${back}&${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`
+  );
+}
+
+// 학부모 연락처 저장 (알림톡 발송에 쓰인다)
+export async function saveParentPhone(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const raw = String(formData.get("phone") || "");
+  const student = await ownedStudent(db, effectiveId, studentId);
+  if (!student) redirect("/teacher");
+
+  // 빈 값이면 지운다. 형식이 틀리면 저장하지 않고 알린다.
+  const phone = raw.trim() ? normalizePhone(raw) : null;
+  if (raw.trim() && !phone) {
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent(
+        "연락처 형식을 확인해 주세요 (예: 010-1234-5678)"
+      )}`
+    );
+  }
+
+  await db.from("students").update({ parent_phone: phone }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
 // 월말 리포트 공유 링크 발급 / 재발급.
 // 선생님이 직접 누를 때만 링크가 생기므로, 다듬기 전의 초안이 새어 나가지 않는다.
 export async function shareMonthlyReport(formData: FormData) {

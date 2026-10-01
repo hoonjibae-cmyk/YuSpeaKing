@@ -1,6 +1,7 @@
 import "server-only";
 import type { AzureScores } from "../types";
 import { logUsage } from "../usage";
+import { getAiModel } from "../settings";
 
 export interface TwoTierFeedback {
   studentFeedback: string; // 학생용 간단·격려형 (즉시 노출)
@@ -20,7 +21,7 @@ export async function generateFeedback(
 ): Promise<TwoTierFeedback> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY 가 설정되지 않았습니다.");
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  const model = await getAiModel();
 
   const weakWords = (scores.words ?? [])
     .filter((w) => w.errorType && w.errorType !== "None")

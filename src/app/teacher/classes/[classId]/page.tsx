@@ -13,6 +13,7 @@ import {
   requestClassTransfer,
   renameClass,
   setCouponHelper,
+  saveParentPhone,
 } from "../../actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -69,7 +70,7 @@ export default async function ClassDetailPage({
     db
       .from("students")
       .select(
-        "id, name, number, school, grade, username, status, bonus_coupons, carried_coupons, coupons_reset_at, parent_token, created_at"
+        "id, name, number, school, grade, username, status, bonus_coupons, carried_coupons, coupons_reset_at, parent_token, parent_phone, created_at"
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
@@ -114,6 +115,7 @@ export default async function ClassDetailPage({
     carried_coupons: number | null;
     coupons_reset_at: string | null;
     parent_token: string | null;
+    parent_phone: string | null;
   };
   const roster = (students ?? []) as Row[];
   const pending = roster.filter((s) => s.status === "pending");
@@ -626,6 +628,31 @@ export default async function ClassDetailPage({
                     >
                       {s.parent_token ? "재발급" : "발급"}
                     </ConfirmSubmitButton>
+                  </form>
+                </div>
+
+                {/* 학부모 연락처 (알림톡 발송용) */}
+                <div className="mt-1.5 flex items-center gap-2 pl-8">
+                  <span className="shrink-0 text-xs text-slate-400">📱 연락처</span>
+                  <form
+                    action={saveParentPhone}
+                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                  >
+                    <input type="hidden" name="classId" value={classId} />
+                    <input type="hidden" name="studentId" value={s.id} />
+                    <input
+                      name="phone"
+                      defaultValue={s.parent_phone ?? ""}
+                      placeholder="010-1234-5678"
+                      inputMode="numeric"
+                      className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] focus:border-brand focus:outline-none"
+                    />
+                    <SubmitButton
+                      pendingText="저장 중…"
+                      className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
+                    >
+                      저장
+                    </SubmitButton>
                   </form>
                 </div>
 

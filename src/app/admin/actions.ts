@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setImpersonation } from "@/lib/teacher-context";
+import { isKnownModel, setAiModel } from "@/lib/settings";
 
 // 운영자가 특정 선생님으로 대행 시작 → 선생님 대시보드로 이동
 export async function impersonateTeacher(formData: FormData) {
@@ -71,4 +72,15 @@ export async function setTeacherRole(formData: FormData) {
     role === "admin" ? { role, status: "approved" } : { role };
   await admin.from("teachers").update(patch).eq("id", teacherId);
   revalidatePath("/admin");
+}
+
+// ---------- 운영자 설정 ----------
+export async function saveAiModel(formData: FormData) {
+  await requireAdmin();
+  const model = String(formData.get("model") || "");
+  if (!isKnownModel(model)) {
+    redirect("/admin/settings");
+  }
+  await setAiModel(model);
+  redirect("/admin/settings?saved=1");
 }

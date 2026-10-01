@@ -212,6 +212,15 @@ export default async function AdminDashboard({
       </header>
 
       {/* 선생님 가입 링크 */}
+      <nav className="mt-6">
+        <Link
+          href="/admin/settings"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+        >
+          ⚙️ 설정 (AI 모델 · 알림톡)
+        </Link>
+      </nav>
+
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">선생님 가입 링크</h2>
         <p className="mt-1 text-xs text-slate-400">

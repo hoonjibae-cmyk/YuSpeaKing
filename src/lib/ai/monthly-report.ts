@@ -1,6 +1,7 @@
 import "server-only";
 import type { MonthlyData } from "../monthly";
 import { logUsage } from "../usage";
+import { getAiModel } from "../settings";
 
 // 월말 리포트 초안(학부모 발송용) 생성. 교사가 이후 수정 가능.
 //
@@ -17,7 +18,7 @@ export async function generateMonthlyReportDraft(
 ): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY 가 설정되지 않았습니다.");
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  const model = await getAiModel();
 
   const itemsText = data.items
     .map(

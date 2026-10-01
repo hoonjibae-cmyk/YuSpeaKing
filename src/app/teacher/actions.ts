@@ -1550,7 +1550,7 @@ export async function regenerateSample(formData: FormData) {
   revalidatePath(`/teacher/classes/${classId}/archive`);
 }
 
-// ---------- HR manager 명단 ----------
+// ---------- Student Card 명단 ----------
 
 // 내 반 명단을 지금 다시 확인. 결과는 hr_pending_students 에 쌓이고
 // 화면은 그것만 읽으므로, 이 버튼을 누를 때만 외부 API 를 부른다.
@@ -1560,7 +1560,7 @@ export async function refreshMyRoster() {
   if (!hrConfigured()) {
     redirect(
       `/teacher/roster?error=${encodeURIComponent(
-        "HR manager 연동이 설정되지 않았어요. 운영자에게 문의해 주세요.",
+        "Student Card 연동이 설정되지 않았어요. 운영자에게 문의해 주세요.",
       )}`,
     );
   }

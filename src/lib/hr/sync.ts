@@ -1,10 +1,10 @@
 import "server-only";
 import { createAdminClient } from "../supabase/admin";
 import { normalizePhone } from "../solapi";
-import { fetchHrStudents, hrConfigured } from "./client";
-import { matchRosters, type HrStudent, type LocalStudent } from "./match";
+import { fetchHrClasses, fetchHrStudents, hrConfigured } from "./client";
+import { matchRosters, normalizeClassName, type HrStudent, type LocalStudent } from "./match";
 
-// 이어 둔 반의 명단을 HR manager 에서 받아 유스피킹과 맞춘다.
+// 이어 둔 반의 명단을 Student Card 에서 받아 유스피킹과 맞춘다.
 //
 // 맞춘 결과로 하는 일은 둘뿐이다.
 //  1) 이미 있는 학생: HR 학생 ID 와 연락처를 채워 넣는다
@@ -113,9 +113,54 @@ export async function syncAll(teacherId?: string): Promise<SyncReport[]> {
   if (!hrConfigured()) return [];
   const admin = createAdminClient();
 
-  const { data: links } = await admin
+  // 이름이 양쪽에서 모두 유일한 반만 자동으로 잇는다. 이름이 다르거나
+  // 같은 이름의 반이 여러 개면 운영자에게 남겨 둔다.
+  const [{ data: localRows, error: localError }, { data: existingLinks, error: linkError }, cardClasses] = await Promise.all([
+    admin.from("classes").select("id, name, teacher_id").is("archived_at", null),
+    admin.from("class_links").select("class_id, hr_class_id"),
+    fetchHrClasses(),
+  ]);
+  if (localError || linkError) throw localError || linkError;
+  const locals = ((localRows ?? []) as { id: string; name: string; teacher_id: string }[])
+    .filter((row) => !teacherId || row.teacher_id === teacherId);
+  const linkedLocal = new Set(((existingLinks ?? []) as { class_id: string; hr_class_id: string }[]).map((row) => row.class_id));
+  const linkedCard = new Set(((existingLinks ?? []) as { class_id: string; hr_class_id: string }[]).map((row) => row.hr_class_id));
+  const allLocalNameCounts = new Map<string, number>();
+  for (const row of (localRows ?? []) as { id: string; name: string }[]) {
+    const name = normalizeClassName(row.name);
+    allLocalNameCounts.set(name, (allLocalNameCounts.get(name) ?? 0) + 1);
+  }
+  const cardByName = new Map<string, typeof cardClasses>();
+  for (const row of cardClasses) {
+    const name = normalizeClassName(row.name);
+    cardByName.set(name, [...(cardByName.get(name) ?? []), row]);
+  }
+  for (const row of locals) {
+    if (linkedLocal.has(row.id)) continue;
+    const name = normalizeClassName(row.name);
+    const candidates = cardByName.get(name) ?? [];
+    if (!name || allLocalNameCounts.get(name) !== 1 || candidates.length !== 1) continue;
+    const candidate = candidates[0];
+    if (linkedCard.has(candidate.hrClassId)) continue;
+    const { error } = await admin.from("class_links").insert({
+      class_id: row.id,
+      hr_class_id: candidate.hrClassId,
+      hr_class_name: candidate.name,
+      linked_by: null,
+    });
+    if (error) {
+      // 동시 실행 중 다른 요청이 먼저 연결한 경우만 건너뛴다.
+      if (error.code === "23505") continue;
+      throw error;
+    }
+    linkedLocal.add(row.id);
+    linkedCard.add(candidate.hrClassId);
+  }
+
+  const { data: links, error: readError } = await admin
     .from("class_links")
     .select("class_id, hr_class_id, classes(name, teacher_id, archived_at)");
+  if (readError) throw readError;
 
   const rows = (links ?? []) as Array<{
     class_id: string;
@@ -164,7 +209,7 @@ export async function pendingCountForTeacher(
   return count ?? 0;
 }
 
-// 운영자 화면 알림용 — HR manager 반과 아직 이어지지 않은 활성 반 수.
+// 운영자 화면 알림용 — Student Card 반과 아직 이어지지 않은 활성 반 수.
 export async function unlinkedClassCount(): Promise<number> {
   const admin = createAdminClient();
   const [{ data: classes }, { data: links }] = await Promise.all([

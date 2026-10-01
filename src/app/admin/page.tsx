@@ -75,7 +75,7 @@ export default async function AdminDashboard({
     admin.from("students").select("id, class_id").eq("status", "approved"),
     admin.from("assignments").select("id, class_id, created_at"),
     admin.from("submissions").select("assignment_id, overall_score, status"),
-    // HR manager 반과 이어지지 않은 반 수 (알림용)
+    // Student Card 반과 이어지지 않은 반 수 (알림용)
     unlinkedClassCount(),
   ]);
 
@@ -245,7 +245,7 @@ export default async function AdminDashboard({
         </Link>
       </nav>
 
-      {/* HR manager 반과 이어지지 않은 반 알림 */}
+      {/* Student Card 반과 이어지지 않은 반 알림 */}
       {unlinkedClasses > 0 && (
         <Link
           href="/admin/hr"
@@ -253,7 +253,7 @@ export default async function AdminDashboard({
         >
           <span className="text-lg">🔗</span>
           <span className="min-w-0 flex-1">
-            <b>HR manager 반과 이어지지 않은 반 {unlinkedClasses}개</b>
+            <b>Student Card 반과 이어지지 않은 반 {unlinkedClasses}개</b>
             <span className="block text-xs text-amber-700">
               이어 주기 전에는 그 반의 학생 명단·연락처를 받아오지 않아요.
             </span>

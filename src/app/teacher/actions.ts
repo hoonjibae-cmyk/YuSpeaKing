@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 14256)
-Total output lines: 1632
-
 "use server";
 
 import { randomBytes } from "crypto";
@@ -562,7 +559,484 @@ export async function acceptTransfer(formData: FormData) {
         : ""),
   );
 
-  revalidatePath("/teacher");…4256 tokens truncated…geText) {
+  revalidatePath("/teacher");
+  revalidatePath(back);
+  redirect(`${back}?accepted=${dueNow ? "1" : encodeURIComponent(effective)}`);
+}
+
+// 요청 거절 / 취소
+export async function resolveTransfer(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const requestId = String(formData.get("requestId") || "");
+  const action = String(formData.get("action") || "rejected");
+  const back = "/teacher/transfers";
+  if (!requestId) redirect(back);
+
+  const admin = createAdminClient();
+  const { data: reqRow } = await admin
+    .from("transfer_requests")
+    .select(
+      "id, class_id, from_teacher_id, to_teacher_id, requested_by, status, applied_at",
+    )
+    .eq("id", requestId)
+    .maybeSingle();
+  // 이미 반영된 건은 되돌리지 않는다
+  if (!reqRow || reqRow.applied_at) redirect(back);
+  if (reqRow.status !== "pending" && reqRow.status !== "accepted")
+    redirect(back);
+
+  const involved =
+    reqRow.from_teacher_id === effectiveId ||
+    reqRow.to_teacher_id === effectiveId;
+  if (!involved) redirect(back);
+
+  // 대기 중: 취소는 보낸 사람만, 거절은 받은 사람만
+  // 예약 완료(accepted, 미적용): 당사자 누구나 취소 가능
+  const next =
+    reqRow.status === "accepted"
+      ? "canceled"
+      : action === "canceled"
+        ? reqRow.requested_by === effectiveId
+          ? "canceled"
+          : null
+        : reqRow.requested_by !== effectiveId
+          ? "rejected"
+          : null;
+  if (!next) redirect(back);
+
+  await admin
+    .from("transfer_requests")
+    .update({ status: next, resolved_at: new Date().toISOString() })
+    .eq("id", requestId);
+
+  // 예약을 취소하면 공동 관리 권한도 함께 회수
+  if (reqRow.status === "accepted") {
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", reqRow.class_id)
+      .eq("role", "full");
+  }
+
+  if (next === "rejected") {
+    const me = await teacherContact(effectiveId);
+    await notifyTeacherById(
+      reqRow.requested_by,
+      `🚫 유스피킹앱 인수인계 요청이 거절되었어요\n${me?.name ?? "선생님"} 님이 요청을 거절했습니다.`,
+    );
+  }
+
+  revalidatePath(back);
+  redirect(back);
+}
+
+// ---------- 공지사항 ----------
+
+export async function createNotice(formData: FormData) {
+  const { db, effectiveId, role } = await getTeacherContext();
+  const title = String(formData.get("title") || "").trim();
+  const body = String(formData.get("body") || "").trim();
+  const pinned = formData.get("pinned") === "on";
+  // target: 'all' | 'my_classes' | 반 id
+  const target = String(formData.get("target") || "").trim();
+
+  if (!title) {
+    redirect(
+      `/teacher/notices?error=${encodeURIComponent("제목을 입력해 주세요")}`,
+    );
+  }
+
+  let scope: "class" | "my_classes" | "all" = "my_classes";
+  let classId: string | null = null;
+  if (target === "all") {
+    // 전체 공지는 운영자만
+    if (role !== "admin") {
+      redirect(
+        `/teacher/notices?error=${encodeURIComponent("전체 공지는 운영자만 쓸 수 있어요")}`,
+      );
+    }
+    scope = "all";
+  } else if (target === "my_classes") {
+    scope = "my_classes";
+  } else {
+    scope = "class";
+    classId = target;
+  }
+
+  const { data: notice, error } = await db
+    .from("notices")
+    .insert({
+      author_id: effectiveId,
+      scope,
+      class_id: classId,
+      title,
+      body,
+      pinned,
+    })
+    .select("id, scope, class_id, author_id")
+    .single();
+
+  if (error || !notice) {
+    redirect(
+      `/teacher/notices?error=${encodeURIComponent(error?.message || "공지 등록 실패")}`,
+    );
+  }
+
+  // 대상 학생에게 푸시 발송 (best-effort — 실패해도 공지는 등록됨)
+  try {
+    const audience = await resolveNoticeAudience({
+      scope: notice.scope,
+      class_id: notice.class_id,
+      author_id: notice.author_id,
+    });
+    const origin = appOrigin();
+    await sendPushToStudents(audience, {
+      title: `📢 ${title}`,
+      body: body.slice(0, 120) || "새 공지가 등록되었어요",
+      studentUrl: origin ? `${origin}/student/notices` : "/student/notices",
+      origin,
+    });
+  } catch (e) {
+    console.error("[공지] 푸시 발송 실패:", e);
+  }
+
+  revalidatePath("/teacher/notices");
+  redirect("/teacher/notices?posted=1");
+}
+
+export async function deleteNotice(formData: FormData) {
+  const { db, effectiveId } = await getTeacherContext();
+  const noticeId = String(formData.get("noticeId") || "");
+  if (noticeId) {
+    await db
+      .from("notices")
+      .delete()
+      .eq("id", noticeId)
+      .eq("author_id", effectiveId);
+  }
+  revalidatePath("/teacher/notices");
+}
+
+// ---------- 쿠폰/보상 설정 ----------
+
+export async function saveCouponSettings(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const goalRaw = parseInt(String(formData.get("coupon_goal") || "10"), 10);
+  const goal = Number.isNaN(goalRaw) ? 10 : Math.max(1, Math.min(100, goalRaw));
+  const text = String(formData.get("coupon_reward_text") || "").trim();
+
+  // 본인 설정만 수정 (impersonation 시 대행 대상)
+  const admin = createAdminClient();
+  await admin
+    .from("teachers")
+    .update({ coupon_goal: goal, coupon_reward_text: text || null })
+    .eq("id", effectiveId);
+
+  revalidatePath("/teacher");
+}
+
+// 학부모 열람 링크 발급/재발급. 재발급하면 이전 링크는 즉시 무효가 된다.
+export async function regenerateParentToken(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  if (!studentId) redirect(`/teacher/classes/${classId}`);
+
+  await db
+    .from("students")
+    .update({ parent_token: randomBytes(16).toString("hex") })
+    .eq("id", studentId)
+    .eq("class_id", classId);
+
+  // 이전 링크로 등록된 학부모 알림 구독도 함께 해지 (죽은 링크로 알림이 가지 않도록)
+  const admin = createAdminClient();
+  await admin
+    .from("push_subscriptions")
+    .delete()
+    .eq("student_id", studentId)
+    .eq("audience", "parent");
+
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 선생님이 학생에게 보너스 쿠폰을 직접 주거나 회수한다 (delta: +1 / -1)
+export async function grantCoupon(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const delta = Number(formData.get("delta") || 0);
+  // 보조 선생님은 쿠폰 화면에서 쓰므로 돌아갈 곳이 다르다
+  const back = String(formData.get("back") || `/teacher/classes/${classId}`);
+  if (!studentId || !delta) redirect(back);
+
+  // 담임 · 보조 선생님(쿠폰 전용) · 공동 관리자만 지급 가능
+  if (!(await canGrantCoupons(effectiveId, classId))) redirect(back);
+
+  // 권한을 확인했으므로 서버 키로 좁게 처리한다
+  // (보조 선생님은 students 테이블 전체 권한이 없다)
+  const admin = createAdminClient();
+  const { data: s } = await admin
+    .from("students")
+    .select("id, bonus_coupons")
+    .eq("id", studentId)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (!s) redirect(back);
+
+  const next = Math.max(0, (s.bonus_coupons ?? 0) + delta);
+  await admin
+    .from("students")
+    .update({ bonus_coupons: next })
+    .eq("id", studentId);
+  revalidatePath(back);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 보조 선생님(쿠폰 발급 전용) 지정 / 해제 — 담임만
+export async function setCouponHelper(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const teacherId = String(formData.get("teacherId") || "");
+  const remove = String(formData.get("remove") || "") === "1";
+  const back = `/teacher/classes/${classId}`;
+  if (!classId || !teacherId) redirect(back);
+
+  const admin = createAdminClient();
+  // 담임 본인만 지정할 수 있다
+  const { data: klass } = await admin
+    .from("classes")
+    .select("id, name, teacher_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (!klass || klass.teacher_id !== effectiveId) {
+    redirect(
+      `${back}?error=${encodeURIComponent("담임 선생님만 지정할 수 있어요")}`,
+    );
+  }
+  if (teacherId === effectiveId) redirect(back);
+
+  if (remove) {
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", classId)
+      .eq("teacher_id", teacherId)
+      .eq("role", "coupon");
+    revalidatePath(back);
+    redirect(`${back}?helper=removed`);
+  }
+
+  const { error } = await admin
+    .from("class_coteachers")
+    .upsert(
+      { class_id: classId, teacher_id: teacherId, role: "coupon" },
+      { onConflict: "class_id,teacher_id" },
+    );
+  if (error) {
+    redirect(`${back}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const me = await teacherContact(effectiveId);
+  await notifyTeacherById(
+    teacherId,
+    `🎟️ 유스피킹앱 보조 선생님으로 지정되었어요\n` +
+      `• 반: ${klass.name}\n` +
+      `• 지정: ${me?.name ?? "선생님"}\n` +
+      `이 반 학생들에게 쿠폰을 줄 수 있어요. (과제·채점은 담임 선생님이 관리)\n` +
+      `👉 쿠폰 주러 가기: ${appOrigin()}/teacher/coupons`,
+  );
+
+  revalidatePath(back);
+  redirect(`${back}?helper=added`);
+}
+
+// ---------- 학생 ----------
+
+export async function addStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const name = String(formData.get("name") || "").trim();
+  const number = parseInt(String(formData.get("number") || ""), 10);
+  if (!classId || !name || Number.isNaN(number)) {
+    redirect(`/teacher/classes/${classId}?error=이름과+번호를+확인하세요`);
+  }
+
+  const { error } = await db
+    .from("students")
+    .insert({ class_id: classId, name, number });
+  if (error) {
+    const msg = error.code === "23505" ? "이미 있는 번호입니다" : error.message;
+    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 여러 학생 일괄 등록 (엑셀/CSV 붙여넣기: 한 줄에 "번호,이름" 또는 "번호[탭]이름")
+export async function bulkAddStudents(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const raw = String(formData.get("roster") || "");
+  if (!classId || !raw.trim()) redirect(`/teacher/classes/${classId}`);
+
+  const rows: { class_id: string; number: number; name: string }[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    const parts = t
+      .split(/[\t,]+|\s{2,}|\s(?=\d)/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    // 첫 토큰이 숫자면 번호, 아니면 두 번째에서 숫자 탐색
+    let number = NaN;
+    let name = "";
+    if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+      number = parseInt(parts[0], 10);
+      name = parts.slice(1).join(" ");
+    } else if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
+      number = parseInt(parts[parts.length - 1], 10);
+      name = parts.slice(0, -1).join(" ");
+    }
+    if (!Number.isNaN(number) && name) {
+      rows.push({ class_id: classId, number, name });
+    }
+  }
+
+  if (rows.length === 0) {
+    redirect(
+      `/teacher/classes/${classId}?error=형식을+확인하세요+(예: 1,민수)`,
+    );
+  }
+
+  // 번호 기준 upsert (이미 있는 번호는 이름 갱신 → 재업로드 안전)
+  const { error } = await db
+    .from("students")
+    .upsert(rows, { onConflict: "class_id,number" });
+  if (error) {
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`,
+    );
+  }
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+export async function deleteStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  await db.from("students").delete().eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 학생 PIN 초기화 (분실 시 → 다음 로그인에서 새로 설정)
+export async function resetStudentPin(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  await db.from("students").update({ pin_hash: null }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 가입 신청 승인: 정보(이름·학교·학년·수강반) 수정 반영 + 대상 반 다음 번호 부여
+export async function approveStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || ""); // 현재 페이지 반(재검증용)
+  const studentId = String(formData.get("studentId") || "");
+  const name = String(formData.get("name") || "").trim();
+  const school = String(formData.get("school") || "").trim();
+  const grade = String(formData.get("grade") || "").trim();
+  const targetClassId =
+    String(formData.get("targetClassId") || "").trim() || classId;
+  if (!studentId) redirect(`/teacher/classes/${classId}`);
+
+  // 대상 반의 다음 번호 자동 부여
+  const [{ data: rows }, { data: current }] = await Promise.all([
+    db
+      .from("students")
+      .select("number")
+      .eq("class_id", targetClassId)
+      .not("number", "is", null)
+      .order("number", { ascending: false })
+      .limit(1),
+    db
+      .from("students")
+      .select("approved_at, parent_token")
+      .eq("id", studentId)
+      .maybeSingle(),
+  ]);
+  const number = Number(rows?.[0]?.number ?? 0) + 1;
+
+  const update: Record<string, unknown> = {
+    status: "approved",
+    class_id: targetClassId,
+    number,
+  };
+  // 최초 승인 시점만 기록 (재승인해도 원래 등록일은 유지)
+  if (!current?.approved_at) update.approved_at = new Date().toISOString();
+  // 학부모 열람 링크 토큰 발급 (없을 때만)
+  if (!current?.parent_token)
+    update.parent_token = randomBytes(16).toString("hex");
+  if (name) update.name = name;
+  if (school) update.school = school;
+  if (grade) update.grade = grade;
+
+  await db.from("students").update(update).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 가입 신청 반려
+export async function rejectStudent(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  await db.from("students").update({ status: "rejected" }).eq("id", studentId);
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+// 학생 비밀번호 재설정(분실 시): 임시 비밀번호 생성 → 선생님이 학생에게 전달
+function genTempPassword(): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(6);
+  let pw = "";
+  for (let i = 0; i < 6; i++) pw += alphabet[bytes[i] % alphabet.length];
+  return pw;
+}
+
+export async function resetStudentPassword(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const studentId = String(formData.get("studentId") || "");
+  const { data: s } = await db
+    .from("students")
+    .select("username")
+    .eq("id", studentId)
+    .single();
+  if (!s) redirect(`/teacher/classes/${classId}`);
+
+  const temp = genTempPassword();
+  await db
+    .from("students")
+    .update({ password_hash: hashPassword(temp) })
+    .eq("id", studentId);
+
+  redirect(
+    `/teacher/classes/${classId}?pwreset=${encodeURIComponent(
+      `${s.username ?? ""}|${temp}`,
+    )}`,
+  );
+}
+
+// ---------- 과제 (지문 등록 + TTS 샘플음성) ----------
+
+export async function createAssignment(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const title = String(formData.get("title") || "").trim();
+  const passageText = String(formData.get("passage_text") || "").trim();
+  const dueDate = String(formData.get("due_date") || "") || null;
+  const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
+  const voice = normalizeVoice(String(formData.get("voice") || ""));
+
+  if (!classId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
   }
 

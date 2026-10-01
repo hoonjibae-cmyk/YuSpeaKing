@@ -25,6 +25,7 @@ import AssignmentCard, { type AssignmentRow } from "./AssignmentCard";
 import { todayKST, archiveCutoffKST, ARCHIVE_AFTER_DAYS } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
 import { listCouponHelpers } from "@/lib/coupon-helpers";
+import { sharedClassIds, accessFor } from "@/lib/class-access";
 import { appOrigin } from "@/lib/app-url";
 
 export default async function ClassDetailPage({
@@ -52,7 +53,7 @@ export default async function ClassDetailPage({
   // 이 화면에 필요한 조회를 한꺼번에 (서로 의존하지 않는다)
   const [
     { data: klass },
-    coIds,
+    shared,
     { data: students },
     { data: assignments },
     { count: archivedAssignments },
@@ -66,18 +67,18 @@ export default async function ClassDetailPage({
       .select("id, name, class_code, archived_at, teacher_id")
       .eq("id", classId)
       .maybeSingle(),
-    coTaughtClassIds(effectiveId),
+    sharedClassIds(effectiveId),
     db
       .from("students")
       .select(
-        "id, name, number, school, grade, username, status, bonus_coupons, carried_coupons, coupons_reset_at, parent_token, parent_phone, created_at"
+        "id, name, number, school, grade, username, status, bonus_coupons, carried_coupons, coupons_reset_at, parent_token, parent_phone, created_at",
       )
       .eq("class_id", classId)
       .order("created_at", { ascending: true }),
     db
       .from("assignments")
       .select(
-        "id, title, passage_text, sample_audio_url, sample_audio_slow_url, sample_voice, due_date, max_attempts, created_at, submissions(overall_score, status)"
+        "id, title, passage_text, sample_audio_url, sample_audio_slow_url, sample_voice, due_date, max_attempts, created_at, submissions(overall_score, status)",
       )
       .eq("class_id", classId)
       .or(`due_date.is.null,due_date.gt.${cutoff}`)
@@ -88,7 +89,11 @@ export default async function ClassDetailPage({
       .eq("class_id", classId)
       .lte("due_date", cutoff),
     db.from("teachers").select("signup_code").eq("id", effectiveId).single(),
-    db.from("classes").select("id, name").eq("teacher_id", effectiveId).order("name"),
+    db
+      .from("classes")
+      .select("id, name")
+      .eq("teacher_id", effectiveId)
+      .order("name"),
     createAdminClient()
       .from("teachers")
       .select("id, name, email")
@@ -98,9 +103,16 @@ export default async function ClassDetailPage({
     listCouponHelpers(classId),
   ]);
 
-  // 담임이거나, 인수인계 공동 관리 기간 중인 선생님만 접근 가능
-  const isCoTeacher = klass ? klass.teacher_id !== effectiveId : false;
-  if (!klass || (isCoTeacher && !coIds.includes(classId))) notFound();
+  // 담임 · 인수인계 공동 관리 · 보조강사만 접근 가능.
+  // 보조강사는 보기만 되므로, 고치는 버튼은 아래에서 canManage 로 가린다.
+  const isOwner = klass ? klass.teacher_id === effectiveId : false;
+  const { canView, canManage } = klass
+    ? accessFor(classId, isOwner, shared)
+    : { canView: false, canManage: false };
+  if (!klass || !canView) notFound();
+  // 인수인계 공동 관리(담임과 동등) / 보조강사(보기 전용) 를 구분한다
+  const isCoTeacher = !isOwner && canManage;
+  const isAssistant = !canManage;
   const isArchived = !!klass.archived_at;
 
   type Row = {
@@ -131,7 +143,7 @@ export default async function ClassDetailPage({
       .select("student_id, created_at")
       .in(
         "student_id",
-        approved.map((s) => s.id)
+        approved.map((s) => s.id),
       )
       .eq("status", "evaluated")
       .gte("completeness", 90);
@@ -139,7 +151,7 @@ export default async function ClassDetailPage({
       approved.map((s) => [
         s.id,
         s.coupons_reset_at ? new Date(s.coupons_reset_at).getTime() : 0,
-      ])
+      ]),
     );
     for (const r of (couponSubs ?? []) as {
       student_id: string;
@@ -174,14 +186,18 @@ export default async function ClassDetailPage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
+      {isImpersonating && actingName && (
+        <ImpersonationBanner name={actingName} />
+      )}
       <Link href="/teacher" className="text-sm text-slate-500 hover:underline">
         ← 반 목록
       </Link>
 
       <header className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="truncate text-xl font-bold sm:text-2xl">{klass.name}</h1>
+          <h1 className="truncate text-xl font-bold sm:text-2xl">
+            {klass.name}
+          </h1>
           <Link
             href={`/teacher/classes/${classId}/trend`}
             className="whitespace-nowrap rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
@@ -195,31 +211,32 @@ export default async function ClassDetailPage({
             📄 월말 리포트
           </Link>
         </div>
-        {isArchived ? (
-          <form action={unarchiveClass}>
-            <input type="hidden" name="classId" value={classId} />
-            <SubmitButton
-              pendingText="복원 중…"
-              className="whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-            >
-              다시 불러오기
-            </SubmitButton>
-          </form>
-        ) : (
-          <form action={archiveClass}>
-            <input type="hidden" name="classId" value={classId} />
-            <SubmitButton
-              pendingText="보관 중…"
-              className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-            >
-              🗂️ 반 보관
-            </SubmitButton>
-          </form>
-        )}
+        {canManage &&
+          (isArchived ? (
+            <form action={unarchiveClass}>
+              <input type="hidden" name="classId" value={classId} />
+              <SubmitButton
+                pendingText="복원 중…"
+                className="whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+              >
+                다시 불러오기
+              </SubmitButton>
+            </form>
+          ) : (
+            <form action={archiveClass}>
+              <input type="hidden" name="classId" value={classId} />
+              <SubmitButton
+                pendingText="보관 중…"
+                className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                🗂️ 반 보관
+              </SubmitButton>
+            </form>
+          ))}
       </header>
 
       {/* 반 이름 변경 (담임만) */}
-      {!isCoTeacher && (
+      {isOwner && (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
             ✏️ 반 이름 수정
@@ -249,10 +266,18 @@ export default async function ClassDetailPage({
         </details>
       )}
 
+      {isAssistant && (
+        <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
+          👀 <b>보조강사</b>로 이 반을 보고 계세요. 명단·과제·점수를 확인할 수
+          있고, <b>쿠폰 주기</b> 외에는 고칠 수 없어요.
+        </p>
+      )}
+
       {isCoTeacher && (
         <p className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-700">
-          🤝 <b>인수인계 공동 관리 기간</b>이에요. 기존 담임 선생님과 함께 이 반을
-          관리할 수 있고, 담임 변경일이 지나면 정식으로 이 반의 담임이 됩니다.
+          🤝 <b>인수인계 공동 관리 기간</b>이에요. 기존 담임 선생님과 함께 이
+          반을 관리할 수 있고, 담임 변경일이 지나면 정식으로 이 반의 담임이
+          됩니다.
         </p>
       )}
 
@@ -290,16 +315,17 @@ export default async function ClassDetailPage({
       )}
       {searchParams.requested && (
         <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
-          📨 인수인계를 요청했어요. 상대 선생님이 수락하면 완료됩니다. (Slack으로
-          알림이 갔어요)
+          📨 인수인계를 요청했어요. 상대 선생님이 수락하면 완료됩니다.
+          (Slack으로 알림이 갔어요)
         </p>
       )}
 
       {/* 보조 선생님 (쿠폰 발급 전용) */}
-      {!isArchived && !isCoTeacher && otherTeachers.length > 0 && (
+      {!isArchived && isOwner && otherTeachers.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-600">
-            🎟️ 보조 선생님 (쿠폰 발급){helpers.length ? ` · ${helpers.length}명` : ""}
+            🎟️ 보조 선생님 (쿠폰 발급)
+            {helpers.length ? ` · ${helpers.length}명` : ""}
           </summary>
           <p className="mt-2 text-xs text-slate-500">
             한 반을 두 분이 함께 맡을 때 사용해요. 지정된 선생님은{" "}
@@ -314,7 +340,9 @@ export default async function ClassDetailPage({
                   key={h.id}
                   className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5"
                 >
-                  <span className="text-sm text-slate-700">{h.name} 선생님</span>
+                  <span className="text-sm text-slate-700">
+                    {h.name} 선생님
+                  </span>
                   <form action={setCouponHelper}>
                     <input type="hidden" name="classId" value={classId} />
                     <input type="hidden" name="teacherId" value={h.id} />
@@ -361,14 +389,14 @@ export default async function ClassDetailPage({
       )}
 
       {/* 반 담임 인수인계 */}
-      {!isArchived && !isCoTeacher && otherTeachers.length > 0 && (
+      {!isArchived && isOwner && otherTeachers.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-600">
             🔀 반 담임 인수인계
           </summary>
           <p className="mt-2 text-xs text-slate-500">
-            담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의 학생·과제·기록
-            전체가 그대로 넘어갑니다.
+            담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의
+            학생·과제·기록 전체가 그대로 넘어갑니다.
           </p>
           <form action={requestClassTransfer} className="mt-3 space-y-2">
             <input type="hidden" name="classId" value={classId} />
@@ -389,7 +417,9 @@ export default async function ClassDetailPage({
                   </option>
                 ))}
               </select>
-              <span className="text-sm text-slate-500">에게 이 반을 넘기기</span>
+              <span className="text-sm text-slate-500">
+                에게 이 반을 넘기기
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500">
               <label className="flex items-center gap-1">
@@ -420,9 +450,9 @@ export default async function ClassDetailPage({
               </SubmitButton>
             </div>
             <p className="text-[11px] text-slate-400">
-              공동 관리 시작일을 넣으면 그날부터 <b>담임 변경일까지 두 선생님이 함께</b>{" "}
-              반을 관리하고, 담임 변경일에 완전히 넘어갑니다. 비워 두면 담임 변경일에
-              바로 바뀝니다.
+              공동 관리 시작일을 넣으면 그날부터{" "}
+              <b>담임 변경일까지 두 선생님이 함께</b> 반을 관리하고, 담임
+              변경일에 완전히 넘어갑니다. 비워 두면 담임 변경일에 바로 바뀝니다.
             </p>
           </form>
         </details>
@@ -431,7 +461,7 @@ export default async function ClassDetailPage({
       {searchParams.pwreset &&
         (() => {
           const [uname, temp] = decodeURIComponent(searchParams.pwreset!).split(
-            "|"
+            "|",
           );
           return (
             <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -447,37 +477,40 @@ export default async function ClassDetailPage({
         <section>
           <h2 className="font-semibold">학생 명단 ({approved.length})</h2>
 
-          {/* 가입 신청 링크 */}
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-            <div className="text-xs font-medium text-slate-500">
-              학생 가입 신청 링크 (학생들에게 공유)
-            </div>
-            {signupCode ? (
-              <div className="mt-1 flex items-center gap-2">
-                <input
-                  id="signup-url"
-                  readOnly
-                  value={signupUrl}
-                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
-                />
-                <CopyButton
-                  targetId="signup-url"
-                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
-                />
+          {/* 가입 신청 링크 — 링크에 담기는 가입 코드는 '지금 보는 선생님'의
+              것이라, 보조강사에게 보여 주면 엉뚱한 반으로 가입된다 */}
+          {canManage && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="text-xs font-medium text-slate-500">
+                학생 가입 신청 링크 (학생들에게 공유)
               </div>
-            ) : (
-              // 가입 코드가 없으면 링크에 선생님 정보가 담기지 않아 학생이 가입할 수 없다.
-              // 깨진 링크를 나눠주는 대신 원인을 알린다.
-              <p className="mt-1 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-                ⚠️ 아직 <b>가입 링크가 만들어지지 않았어요.</b> 이대로 공유하면
-                학생이 가입할 수 없습니다. 운영자에게 <b>가입 코드 발급</b>을
-                요청해 주세요.
-              </p>
-            )}
-          </div>
+              {signupCode ? (
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    id="signup-url"
+                    readOnly
+                    value={signupUrl}
+                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+                  />
+                  <CopyButton
+                    targetId="signup-url"
+                    className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+                  />
+                </div>
+              ) : (
+                // 가입 코드가 없으면 링크에 선생님 정보가 담기지 않아 학생이 가입할 수 없다.
+                // 깨진 링크를 나눠주는 대신 원인을 알린다.
+                <p className="mt-1 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                  ⚠️ 아직 <b>가입 링크가 만들어지지 않았어요.</b> 이대로
+                  공유하면 학생이 가입할 수 없습니다. 운영자에게{" "}
+                  <b>가입 코드 발급</b>을 요청해 주세요.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* 승인 대기 (정보 수정 후 승인 가능) */}
-          {pending.length > 0 && (
+          {canManage && pending.length > 0 && (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <div className="text-sm font-semibold text-amber-700">
                 가입 신청 대기 {pending.length}건
@@ -557,46 +590,50 @@ export default async function ClassDetailPage({
             {approved.map((s) => (
               <li key={s.id} className="px-4 py-2.5">
                 <div className="flex items-center justify-between">
-                <span className="min-w-0">
-                  <span className="inline-block w-8 text-slate-400">
-                    {s.number ?? "-"}
-                  </span>
-                  {s.name}
-                  {s.username && (
-                    <span className="ml-2 text-xs text-slate-400">
-                      @{s.username}
+                  <span className="min-w-0">
+                    <span className="inline-block w-8 text-slate-400">
+                      {s.number ?? "-"}
                     </span>
-                  )}
-                  <span
-                    className="ml-2 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                    title="모은 쿠폰 (과제 적립 + 특별 쿠폰)"
-                  >
-                    🎟️ {couponCount.get(s.id) ?? 0}
+                    {s.name}
+                    {s.username && (
+                      <span className="ml-2 text-xs text-slate-400">
+                        @{s.username}
+                      </span>
+                    )}
+                    <span
+                      className="ml-2 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                      title="모은 쿠폰 (과제 적립 + 특별 쿠폰)"
+                    >
+                      🎟️ {couponCount.get(s.id) ?? 0}
+                    </span>
                   </span>
-                </span>
-                <span className="flex items-center gap-3">
-                  {s.username && (
-                    <form action={resetStudentPassword}>
-                      <input type="hidden" name="classId" value={classId} />
-                      <input type="hidden" name="studentId" value={s.id} />
-                      <button className="text-xs text-slate-400 hover:text-brand">
-                        비번 재설정
-                      </button>
-                    </form>
-                  )}
-                  <form action={deleteStudent}>
-                    <input type="hidden" name="classId" value={classId} />
-                    <input type="hidden" name="studentId" value={s.id} />
-                    <button className="text-xs text-slate-400 hover:text-red-500">
-                      삭제
-                    </button>
-                  </form>
-                </span>
+                  <span className="flex items-center gap-3">
+                    {canManage && s.username && (
+                      <form action={resetStudentPassword}>
+                        <input type="hidden" name="classId" value={classId} />
+                        <input type="hidden" name="studentId" value={s.id} />
+                        <button className="text-xs text-slate-400 hover:text-brand">
+                          비번 재설정
+                        </button>
+                      </form>
+                    )}
+                    {canManage && (
+                      <form action={deleteStudent}>
+                        <input type="hidden" name="classId" value={classId} />
+                        <input type="hidden" name="studentId" value={s.id} />
+                        <button className="text-xs text-slate-400 hover:text-red-500">
+                          삭제
+                        </button>
+                      </form>
+                    )}
+                  </span>
                 </div>
 
                 {/* 학부모 열람 링크 */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">
-                  <span className="shrink-0 text-xs text-slate-400">👨‍👩‍👧 학부모</span>
+                  <span className="shrink-0 text-xs text-slate-400">
+                    👨‍👩‍👧 학부모
+                  </span>
                   {s.parent_token ? (
                     <>
                       <input
@@ -615,48 +652,58 @@ export default async function ClassDetailPage({
                       아직 링크가 없어요
                     </span>
                   )}
-                  <form action={regenerateParentToken} className="shrink-0">
-                    <input type="hidden" name="classId" value={classId} />
-                    <input type="hidden" name="studentId" value={s.id} />
-                    <ConfirmSubmitButton
-                      message={
-                        s.parent_token
-                          ? "링크를 새로 만들까요?\n\n기존에 학부모께 보낸 링크는 즉시 사용할 수 없게 됩니다."
-                          : "학부모 열람 링크를 만들까요?"
-                      }
-                      className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
-                    >
-                      {s.parent_token ? "재발급" : "발급"}
-                    </ConfirmSubmitButton>
-                  </form>
+                  {canManage && (
+                    <form action={regenerateParentToken} className="shrink-0">
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="studentId" value={s.id} />
+                      <ConfirmSubmitButton
+                        message={
+                          s.parent_token
+                            ? "링크를 새로 만들까요?\n\n기존에 학부모께 보낸 링크는 즉시 사용할 수 없게 됩니다."
+                            : "학부모 열람 링크를 만들까요?"
+                        }
+                        className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
+                      >
+                        {s.parent_token ? "재발급" : "발급"}
+                      </ConfirmSubmitButton>
+                    </form>
+                  )}
                 </div>
 
                 {/* 학부모 연락처 (알림톡 발송용) */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">
-                  <span className="shrink-0 text-xs text-slate-400">📱 연락처</span>
-                  <form
-                    action={saveParentPhone}
-                    className="flex min-w-0 flex-1 items-center gap-1.5"
-                  >
-                    <input type="hidden" name="classId" value={classId} />
-                    <input type="hidden" name="studentId" value={s.id} />
-                    <input
-                      name="phone"
-                      defaultValue={s.parent_phone ?? ""}
-                      placeholder="010-1234-5678"
-                      inputMode="numeric"
-                      className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] focus:border-brand focus:outline-none"
-                    />
-                    <SubmitButton
-                      pendingText="저장 중…"
-                      className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
+                  <span className="shrink-0 text-xs text-slate-400">
+                    📱 연락처
+                  </span>
+                  {canManage ? (
+                    <form
+                      action={saveParentPhone}
+                      className="flex min-w-0 flex-1 items-center gap-1.5"
                     >
-                      저장
-                    </SubmitButton>
-                  </form>
+                      <input type="hidden" name="classId" value={classId} />
+                      <input type="hidden" name="studentId" value={s.id} />
+                      <input
+                        name="phone"
+                        defaultValue={s.parent_phone ?? ""}
+                        placeholder="010-1234-5678"
+                        inputMode="numeric"
+                        className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-[11px] focus:border-brand focus:outline-none"
+                      />
+                      <SubmitButton
+                        pendingText="저장 중…"
+                        className="whitespace-nowrap text-[11px] text-slate-400 hover:text-brand"
+                      >
+                        저장
+                      </SubmitButton>
+                    </form>
+                  ) : (
+                    <span className="min-w-0 flex-1 text-[11px] text-slate-500">
+                      {s.parent_phone || "—"}
+                    </span>
+                  )}
                 </div>
 
-                {/* 보너스 쿠폰 지급 */}
+                {/* 보너스 쿠폰 지급 (보조강사도 할 수 있다) */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">
                   <span className="text-xs text-slate-400">🎟️ 특별 쿠폰</span>
                   <form action={grantCoupon}>
@@ -691,23 +738,24 @@ export default async function ClassDetailPage({
           </ul>
           <p className="mt-2 text-[11px] text-slate-400">
             🎟️ 특별 쿠폰은 과제 제출로 쌓이는 쿠폰과 별개로 선생님이 직접 주는
-            쿠폰이에요. 학생 쿠폰함에 <b className="text-violet-500">보라색 테두리</b>
-            로 표시됩니다.
+            쿠폰이에요. 학생 쿠폰함에{" "}
+            <b className="text-violet-500">보라색 테두리</b>로 표시됩니다.
           </p>
-
         </section>
 
         {/* 과제(지문) */}
         <section>
           <h2 className="font-semibold">과제 ({assignments?.length ?? 0})</h2>
-          <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-            <summary className="cursor-pointer text-sm font-medium text-brand">
-              + 새 지문 등록 (타이핑 / PDF · AI 문장 선별)
-            </summary>
-            <div className="mt-3">
-              <PassageComposer classId={classId} />
-            </div>
-          </details>
+          {canManage && (
+            <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <summary className="cursor-pointer text-sm font-medium text-brand">
+                + 새 지문 등록 (타이핑 / PDF · AI 문장 선별)
+              </summary>
+              <div className="mt-3">
+                <PassageComposer classId={classId} />
+              </div>
+            </details>
+          )}
 
           <ul className="mt-3 space-y-2">
             {(!assignments || assignments.length === 0) && (
@@ -721,6 +769,7 @@ export default async function ClassDetailPage({
                 a={a as unknown as AssignmentRow}
                 classId={classId}
                 today={today}
+                canManage={canManage}
               />
             ))}
           </ul>

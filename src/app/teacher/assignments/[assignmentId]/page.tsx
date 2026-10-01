@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { sharedClassIds, accessFor } from "@/lib/class-access";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AzureScores, SubmissionStatus } from "@/lib/types";
@@ -30,13 +31,31 @@ export default async function AssignmentDashboard({
     await getTeacherContext();
   const { assignmentId } = params;
 
-  const { data: assignment } = await db
-    .from("assignments")
-    .select("id, class_id, title, passage_text, max_attempts, classes!inner(teacher_id)")
-    .eq("id", assignmentId)
-    .eq("classes.teacher_id", effectiveId)
-    .single();
+  // 담임만 걸러 내면 인수인계 공동 관리 선생님과 보조강사가 들어오지 못한다.
+  // 반을 볼 수 있는지로 판정하고, 고치는 버튼은 canManage 로 가린다.
+  const [{ data: assignment }, shared] = await Promise.all([
+    db
+      .from("assignments")
+      .select(
+        "id, class_id, title, passage_text, max_attempts, classes!inner(teacher_id)",
+      )
+      .eq("id", assignmentId)
+      .maybeSingle(),
+    sharedClassIds(effectiveId),
+  ]);
   if (!assignment) notFound();
+
+  const klass = Array.isArray(assignment.classes)
+    ? assignment.classes[0]
+    : assignment.classes;
+  const isOwner =
+    (klass as { teacher_id: string } | null)?.teacher_id === effectiveId;
+  const { canView, canManage } = accessFor(
+    assignment.class_id,
+    isOwner,
+    shared,
+  );
+  if (!canView) notFound();
 
   const [{ data: students }, { data: submissions }] = await Promise.all([
     db
@@ -50,12 +69,14 @@ export default async function AssignmentDashboard({
     db
       .from("submissions")
       .select(
-        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, audio_expired, error_message, attempt_count"
+        "id, student_id, status, overall_score, azure_scores, teacher_feedback, student_feedback, teacher_reviewed, audio_path, audio_expired, error_message, attempt_count",
       )
       .eq("assignment_id", assignmentId),
   ]);
 
-  const subByStudent = new Map((submissions ?? []).map((s) => [s.student_id, s]));
+  const subByStudent = new Map(
+    (submissions ?? []).map((s) => [s.student_id, s]),
+  );
 
   // 비공개 오디오 서명 URL 생성 (admin)
   const admin = createAdminClient();
@@ -68,7 +89,7 @@ export default async function AssignmentDashboard({
           .from("submissions")
           .createSignedUrl(s.audio_path, 60 * 60);
         if (data?.signedUrl) signedUrls.set(s.id, data.signedUrl);
-      })
+      }),
   );
 
   const submittedCount = submissions?.length ?? 0;
@@ -84,13 +105,13 @@ export default async function AssignmentDashboard({
   const maxScore = scores.length ? Math.round(Math.max(...scores)) : null;
   const minScore = scores.length ? Math.round(Math.min(...scores)) : null;
   const submissionRate = total ? Math.round((submittedCount / total) * 100) : 0;
-  const nonSubmitters = (students ?? []).filter(
-    (s) => !subByStudent.has(s.id)
-  );
+  const nonSubmitters = (students ?? []).filter((s) => !subByStudent.has(s.id));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
+      {isImpersonating && actingName && (
+        <ImpersonationBanner name={actingName} />
+      )}
       <Link
         href={`/teacher/classes/${assignment.class_id}`}
         className="text-sm text-slate-500 hover:underline"
@@ -101,10 +122,23 @@ export default async function AssignmentDashboard({
 
       {/* 통계 요약 */}
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatCard label="제출률" value={`${submissionRate}%`} sub={`${submittedCount}/${total}명`} />
-        <StatCard label="평균 점수" value={avgScore != null ? `${avgScore}점` : "-"} />
-        <StatCard label="최고" value={maxScore != null ? `${maxScore}점` : "-"} />
-        <StatCard label="최저" value={minScore != null ? `${minScore}점` : "-"} />
+        <StatCard
+          label="제출률"
+          value={`${submissionRate}%`}
+          sub={`${submittedCount}/${total}명`}
+        />
+        <StatCard
+          label="평균 점수"
+          value={avgScore != null ? `${avgScore}점` : "-"}
+        />
+        <StatCard
+          label="최고"
+          value={maxScore != null ? `${maxScore}점` : "-"}
+        />
+        <StatCard
+          label="최저"
+          value={minScore != null ? `${minScore}점` : "-"}
+        />
       </div>
       {total > 0 && nonSubmitters.length === 0 ? (
         <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
@@ -141,8 +175,8 @@ export default async function AssignmentDashboard({
                           sub.status === "evaluated"
                             ? "text-green-600"
                             : sub.status === "error"
-                            ? "text-red-500"
-                            : "text-slate-500"
+                              ? "text-red-500"
+                              : "text-slate-500"
                         }
                       >
                         {STATUS_LABEL[sub.status as SubmissionStatus]}
@@ -180,7 +214,8 @@ export default async function AssignmentDashboard({
                       />
                     ) : sub.audio_expired ? (
                       <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
-                        음원 보관기간(60일)이 지나 삭제되었습니다. (점수·피드백은 유지)
+                        음원 보관기간(60일)이 지나 삭제되었습니다.
+                        (점수·피드백은 유지)
                       </p>
                     ) : null}
 
@@ -203,9 +238,10 @@ export default async function AssignmentDashboard({
                     )}
                     {scores?.truncated && (
                       <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        ⚠️ 녹음이 길어 인식이 도중에 끊겼어요. 완성도는 실제로 읽은
-                        양이 아닐 수 있어 <b>종합 점수에 반영하지 않았습니다.</b>{" "}
-                        정확한 채점이 필요하면 [AI 재평가 실행]을 눌러 주세요.
+                        ⚠️ 녹음이 길어 인식이 도중에 끊겼어요. 완성도는 실제로
+                        읽은 양이 아닐 수 있어{" "}
+                        <b>종합 점수에 반영하지 않았습니다.</b> 정확한 채점이
+                        필요하면 [AI 재평가 실행]을 눌러 주세요.
                       </p>
                     )}
 
@@ -224,64 +260,108 @@ export default async function AssignmentDashboard({
                       </div>
                     )}
 
-                    {/* 교사용 상세 리포트 (수정 가능) */}
-                    <form action={updateSubmissionReview} className="space-y-2">
-                      <input type="hidden" name="assignmentId" value={assignmentId} />
-                      <input type="hidden" name="submissionId" value={sub.id} />
-                      <label className="text-xs font-medium text-slate-500">
-                        교사용 상세 리포트 (학부모 안내용 — 수정 가능)
-                      </label>
-                      <textarea
-                        name="teacher_feedback"
-                        defaultValue={sub.teacher_feedback ?? ""}
-                        rows={8}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-                      />
-                      <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-sm text-slate-600">
-                          <input
-                            type="checkbox"
-                            name="teacher_reviewed"
-                            defaultChecked={sub.teacher_reviewed}
-                          />
-                          검토완료로 표시
+                    {/* 교사용 상세 리포트 — 담임·공동관리는 수정, 보조강사는 읽기만 */}
+                    {canManage ? (
+                      <form
+                        action={updateSubmissionReview}
+                        className="space-y-2"
+                      >
+                        <input
+                          type="hidden"
+                          name="assignmentId"
+                          value={assignmentId}
+                        />
+                        <input
+                          type="hidden"
+                          name="submissionId"
+                          value={sub.id}
+                        />
+                        <label className="text-xs font-medium text-slate-500">
+                          교사용 상세 리포트 (학부모 안내용 — 수정 가능)
                         </label>
-                        <SubmitButton
-                          pendingText="저장 중…"
-                          className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-                        >
-                          저장
-                        </SubmitButton>
-                      </div>
-                    </form>
+                        <textarea
+                          name="teacher_feedback"
+                          defaultValue={sub.teacher_feedback ?? ""}
+                          rows={8}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+                        />
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 text-sm text-slate-600">
+                            <input
+                              type="checkbox"
+                              name="teacher_reviewed"
+                              defaultChecked={sub.teacher_reviewed}
+                            />
+                            검토완료로 표시
+                          </label>
+                          <SubmitButton
+                            pendingText="저장 중…"
+                            className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                          >
+                            저장
+                          </SubmitButton>
+                        </div>
+                      </form>
+                    ) : (
+                      sub.teacher_feedback && (
+                        <div>
+                          <div className="text-xs font-medium text-slate-500">
+                            교사용 상세 리포트
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                            {sub.teacher_feedback}
+                          </p>
+                        </div>
+                      )
+                    )}
 
                     {/* 시도 횟수 & 액션 */}
                     <div className="flex flex-wrap items-center gap-4 pt-1">
                       <span className="text-xs text-slate-400">
-                        제출 {sub.attempt_count ?? 0}/{assignment.max_attempts}회
+                        제출 {sub.attempt_count ?? 0}/{assignment.max_attempts}
+                        회
                       </span>
-                      <form action={reevaluateSubmission}>
-                        <input type="hidden" name="assignmentId" value={assignmentId} />
-                        <input type="hidden" name="submissionId" value={sub.id} />
-                        <SubmitButton
-                          pendingText="재평가 중… (십여 초)"
-                          className="text-xs text-slate-400 hover:text-brand hover:underline"
-                        >
-                          AI 재평가 실행
-                        </SubmitButton>
-                      </form>
-                      {(sub.attempt_count ?? 0) >= assignment.max_attempts && (
-                        <form action={resetAttempts}>
-                          <input type="hidden" name="assignmentId" value={assignmentId} />
-                          <input type="hidden" name="submissionId" value={sub.id} />
+                      {canManage && (
+                        <form action={reevaluateSubmission}>
+                          <input
+                            type="hidden"
+                            name="assignmentId"
+                            value={assignmentId}
+                          />
+                          <input
+                            type="hidden"
+                            name="submissionId"
+                            value={sub.id}
+                          />
                           <SubmitButton
-                            pendingText="처리 중…"
-                            className="text-xs text-brand hover:underline"
+                            pendingText="재평가 중… (십여 초)"
+                            className="text-xs text-slate-400 hover:text-brand hover:underline"
                           >
-                            재제출 기회 주기
+                            AI 재평가 실행
                           </SubmitButton>
                         </form>
                       )}
+                      {canManage &&
+                        (sub.attempt_count ?? 0) >= assignment.max_attempts && (
+                          <form action={resetAttempts}>
+                            <input
+                              type="hidden"
+                              name="assignmentId"
+                              value={assignmentId}
+                            />
+                            <input
+                              type="hidden"
+                              name="submissionId"
+                              value={sub.id}
+                            />
+                            <SubmitButton
+                              pendingText="처리 중…"
+                              className="text-xs text-brand hover:underline"
+                            >
+                              재제출 기회 주기
+                            </SubmitButton>
+                          </form>
+                        )}
                     </div>
                   </div>
                 </details>

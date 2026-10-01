@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { applyDueTransfers, coTaughtClassIds } from "@/lib/transfers";
+import { applyDueTransfers } from "@/lib/transfers";
+import { sharedClassIds } from "@/lib/class-access";
 import { pendingCountForTeacher } from "@/lib/hr/sync";
 import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
@@ -22,13 +23,13 @@ export default async function TeacherDashboard({
 
   // 1단계 — 서로 의존하지 않는 조회는 한꺼번에 (순차로 하면 왕복이 그대로 쌓인다)
   const [
-    coIds,
+    shared,
     { count: archivedCount },
     { count: incomingTransfers },
     { data: couponRow },
     pendingRoster,
   ] = await Promise.all([
-    coTaughtClassIds(effectiveId),
+    sharedClassIds(effectiveId),
     db
       .from("classes")
       .select("id", { count: "exact", head: true })
@@ -56,7 +57,8 @@ export default async function TeacherDashboard({
   const couponGoal = couponRow?.coupon_goal ?? 25;
   const couponRewardText = couponRow?.coupon_reward_text ?? "";
 
-  // 2단계 — 내 반 + 공동 관리 중인 반 (coIds 가 있어야 한다)
+  // 2단계 — 내 반 + 공동 관리 반 + 보조강사로 지정된 반 (shared 가 있어야 한다)
+  const sharedIds = shared.all;
   const classesQuery = db
     .from("classes")
     .select(
@@ -64,8 +66,10 @@ export default async function TeacherDashboard({
     )
     .is("archived_at", null)
     .order("created_at", { ascending: false });
-  const { data: classes } = await (coIds.length
-    ? classesQuery.or(`teacher_id.eq.${effectiveId},id.in.(${coIds.join(",")})`)
+  const { data: classes } = await (sharedIds.length
+    ? classesQuery.or(
+        `teacher_id.eq.${effectiveId},id.in.(${sharedIds.join(",")})`,
+      )
     : classesQuery.eq("teacher_id", effectiveId));
 
   // 반별 가입 승인 대기 수
@@ -291,11 +295,16 @@ export default async function TeacherDashboard({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{c.name}</span>
-                  {c.teacher_id !== effectiveId && (
-                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
-                      🤝 공동 관리 중
-                    </span>
-                  )}
+                  {c.teacher_id !== effectiveId &&
+                    (shared.viewOnly.includes(c.id) ? (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        👀 보조강사 · 보기
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+                        🤝 공동 관리 중
+                      </span>
+                    ))}
                   {(pendingByClass.get(c.id) ?? 0) > 0 && (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                       가입 신청 {pendingByClass.get(c.id)}
@@ -306,7 +315,9 @@ export default async function TeacherDashboard({
                   학생 {studentCount}명 · 과제 {assignmentCount}개
                 </div>
               </div>
-              <span className="text-sm text-brand">관리 →</span>
+              <span className="text-sm text-brand">
+                {shared.viewOnly.includes(c.id) ? "보기 →" : "관리 →"}
+              </span>
             </Link>
           );
         })}

@@ -24,20 +24,23 @@ export default function AssignmentCard({
   a,
   classId,
   today,
+  canManage = true,
 }: {
   a: AssignmentRow;
   classId: string;
   today: string;
+  /** 보조강사는 보기만 한다 — 음성 재생성·삭제·수정을 감춘다 */
+  canManage?: boolean;
 }) {
   const subs = a.submissions ?? [];
   const subCount = subs.length;
   const evaluated = subs.filter(
-    (s) => s.status === "evaluated" && s.overall_score != null
+    (s) => s.status === "evaluated" && s.overall_score != null,
   );
   const avg = evaluated.length
     ? Math.round(
         evaluated.reduce((t, s) => t + Number(s.overall_score), 0) /
-          evaluated.length
+          evaluated.length,
       )
     : null;
 
@@ -78,8 +81,7 @@ export default function AssignmentCard({
             <span>{dueDate ? `📅 마감 ${dueDate}` : "📅 상시 과제"}</span>
             <span className="text-slate-300">·</span>
             <span>
-              제출 {subCount}명
-              {avg != null && ` · 평균 ${avg}점`}
+              제출 {subCount}명{avg != null && ` · 평균 ${avg}점`}
             </span>
           </div>
         </div>
@@ -125,84 +127,93 @@ export default function AssignmentCard({
           ) : (
             <span className="text-amber-600">⚠ 샘플음성 없음</span>
           )}
-          <form action={regenerateSample} className="flex items-center gap-1.5">
-            <input type="hidden" name="classId" value={classId} />
-            <input type="hidden" name="assignmentId" value={a.id} />
-            <select
-              name="voice"
-              defaultValue={a.sample_voice || DEFAULT_TTS_VOICE}
-              className="max-w-[8.5rem] rounded border border-slate-200 px-1 py-0.5 text-[11px] text-slate-500 focus:border-brand focus:outline-none"
-              title="음성 선택 후 재생성"
+          {canManage && (
+            <form
+              action={regenerateSample}
+              className="flex items-center gap-1.5"
             >
-              {TTS_VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-            <SubmitButton
-              pendingText="생성 중…"
-              className="whitespace-nowrap text-slate-400 hover:text-brand hover:underline"
-            >
-              음성 재생성
-            </SubmitButton>
-          </form>
-          <form action={deleteAssignment} className="ml-auto">
-            <input type="hidden" name="classId" value={classId} />
-            <input type="hidden" name="assignmentId" value={a.id} />
-            <SubmitButton
-              pendingText="삭제 중…"
-              className="text-slate-400 hover:text-red-500 hover:underline"
-            >
-              삭제
-            </SubmitButton>
-          </form>
+              <input type="hidden" name="classId" value={classId} />
+              <input type="hidden" name="assignmentId" value={a.id} />
+              <select
+                name="voice"
+                defaultValue={a.sample_voice || DEFAULT_TTS_VOICE}
+                className="max-w-[8.5rem] rounded border border-slate-200 px-1 py-0.5 text-[11px] text-slate-500 focus:border-brand focus:outline-none"
+                title="음성 선택 후 재생성"
+              >
+                {TTS_VOICES.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+              <SubmitButton
+                pendingText="생성 중…"
+                className="whitespace-nowrap text-slate-400 hover:text-brand hover:underline"
+              >
+                음성 재생성
+              </SubmitButton>
+            </form>
+          )}
+          {canManage && (
+            <form action={deleteAssignment} className="ml-auto">
+              <input type="hidden" name="classId" value={classId} />
+              <input type="hidden" name="assignmentId" value={a.id} />
+              <SubmitButton
+                pendingText="삭제 중…"
+                className="text-slate-400 hover:text-red-500 hover:underline"
+              >
+                삭제
+              </SubmitButton>
+            </form>
+          )}
         </div>
 
         {/* 과제 수정 */}
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
-            수정
-          </summary>
-          <form action={updateAssignment} className="mt-2 space-y-2">
-            <input type="hidden" name="classId" value={classId} />
-            <input type="hidden" name="assignmentId" value={a.id} />
-            <input
-              name="title"
-              defaultValue={a.title}
-              required
-              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
-            />
-            <textarea
-              name="passage_text"
-              defaultValue={a.passage_text}
-              required
-              rows={4}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-            />
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-              <label>
-                마감일
-                <input
-                  name="due_date"
-                  type="date"
-                  defaultValue={a.due_date ?? ""}
-                  className="ml-1 rounded border border-slate-300 px-2 py-1"
-                />
-              </label>
-              <SubmitButton
-                pendingText="저장 중…"
-                className="ml-auto rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark"
-              >
-                저장
-              </SubmitButton>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              제출은 학생당 1회 고정. 지문을 바꾸면 샘플음성이 자동으로 다시
-              생성돼요. 마감일을 미래로 바꾸면 보관함에서 다시 나옵니다.
-            </p>
-          </form>
-        </details>
+        {canManage && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-slate-400 hover:text-brand">
+              수정
+            </summary>
+            <form action={updateAssignment} className="mt-2 space-y-2">
+              <input type="hidden" name="classId" value={classId} />
+              <input type="hidden" name="assignmentId" value={a.id} />
+              <input
+                name="title"
+                defaultValue={a.title}
+                required
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+              />
+              <textarea
+                name="passage_text"
+                defaultValue={a.passage_text}
+                required
+                rows={4}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+              />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                <label>
+                  마감일
+                  <input
+                    name="due_date"
+                    type="date"
+                    defaultValue={a.due_date ?? ""}
+                    className="ml-1 rounded border border-slate-300 px-2 py-1"
+                  />
+                </label>
+                <SubmitButton
+                  pendingText="저장 중…"
+                  className="ml-auto rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark"
+                >
+                  저장
+                </SubmitButton>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                제출은 학생당 1회 고정. 지문을 바꾸면 샘플음성이 자동으로 다시
+                생성돼요. 마감일을 미래로 바꾸면 보관함에서 다시 나옵니다.
+              </p>
+            </form>
+          </details>
+        )}
       </div>
     </li>
   );

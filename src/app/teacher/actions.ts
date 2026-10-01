@@ -289,7 +289,16 @@ export async function moveStudent(formData: FormData) {
   const back = `/teacher/move?classId=${classId}`;
   if (!studentId || !target) redirect(back);
 
-  // 내 반 학생인지 확인
+  // 내가 담임인 반의 학생인지 확인.
+  // 학생 조회만으로는 모자란다 — 보조강사도 명단을 '볼' 수는 있기 때문에,
+  // 반의 담임이 나인지를 따로 확인해야 남의 반 학생을 옮기지 못한다.
+  const { data: srcClass } = await db
+    .from("classes")
+    .select("id, teacher_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (!srcClass || srcClass.teacher_id !== effectiveId) redirect(back);
+
   const { data: student } = await db
     .from("students")
     .select("id, name, class_id")
@@ -742,11 +751,16 @@ export async function regenerateParentToken(formData: FormData) {
   const studentId = String(formData.get("studentId") || "");
   if (!studentId) redirect(`/teacher/classes/${classId}`);
 
-  await db
+  // 권한이 없으면 정책에 막혀 한 줄도 바뀌지 않는다. 그 결과를 보고 다음으로
+  // 넘어가야 한다 — 아래 구독 해지는 서비스 키로 돌아 정책을 타지 않으므로,
+  // 확인 없이 두면 권한 없는 사람이 학부모 알림만 끊을 수 있다.
+  const { data: updated } = await db
     .from("students")
     .update({ parent_token: randomBytes(16).toString("hex") })
     .eq("id", studentId)
-    .eq("class_id", classId);
+    .eq("class_id", classId)
+    .select("id");
+  if (!updated?.length) redirect(`/teacher/classes/${classId}`);
 
   // 이전 링크로 등록된 학부모 알림 구독도 함께 해지 (죽은 링크로 알림이 가지 않도록)
   const admin = createAdminClient();

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { daysAgoKST, TREND_START } from "./date";
-import { coTaughtClassIds } from "./transfers";
+import { sharedClassIds } from "./class-access";
 
 // 성적 추이 화면과 CSV 내보내기가 같은 데이터를 보도록 조회를 한곳에 모은다.
 // (두 곳이 각자 조회하면 기간·필터가 어긋나 숫자가 달라진다)
@@ -43,7 +43,8 @@ export interface ScoreRow {
 
 // 선생님이 볼 수 있는 반 (담임 + 공동 관리, 보관된 반 제외)
 export async function visibleClasses(db: DB, teacherId: string) {
-  const coIds = await coTaughtClassIds(teacherId);
+  // 보조강사로 지정된 반도 성적 추이를 볼 수 있다
+  const coIds = (await sharedClassIds(teacherId)).all;
   const q = db
     .from("classes")
     .select("id, name")
@@ -59,7 +60,7 @@ export async function visibleClasses(db: DB, teacherId: string) {
 export async function fetchScoreRows(
   db: DB,
   classes: { id: string; name: string }[],
-  from: string
+  from: string,
 ): Promise<ScoreRow[]> {
   if (classes.length === 0) return [];
   const classIds = classes.map((c) => c.id);
@@ -72,28 +73,35 @@ export async function fetchScoreRows(
       .select("id, name, number, class_id")
       .in("class_id", classIds)
       .eq("status", "approved"),
-    db.from("assignments").select("id, title, class_id").in("class_id", classIds),
+    db
+      .from("assignments")
+      .select("id, title, class_id")
+      .in("class_id", classIds),
   ]);
 
   const students = new Map(
-    ((studentRows ?? []) as {
-      id: string;
-      name: string;
-      number: number | null;
-      class_id: string;
-    }[]).map((s) => [s.id, s])
+    (
+      (studentRows ?? []) as {
+        id: string;
+        name: string;
+        number: number | null;
+        class_id: string;
+      }[]
+    ).map((s) => [s.id, s]),
   );
   const assignments = new Map(
     ((assignmentRows ?? []) as { id: string; title: string }[]).map((a) => [
       a.id,
       a.title,
-    ])
+    ]),
   );
   if (students.size === 0) return [];
 
   const { data: subs } = await db
     .from("submissions")
-    .select("student_id, assignment_id, overall_score, completeness, azure_scores, created_at")
+    .select(
+      "student_id, assignment_id, overall_score, completeness, azure_scores, created_at",
+    )
     .in("student_id", Array.from(students.keys()))
     .eq("status", "evaluated")
     .not("overall_score", "is", null)
@@ -102,14 +110,16 @@ export async function fetchScoreRows(
 
   const num = (v: unknown) => (v == null ? null : Number(v));
 
-  return ((subs ?? []) as {
-    student_id: string;
-    assignment_id: string;
-    overall_score: number;
-    completeness: number | null;
-    azure_scores: Record<string, unknown> | null;
-    created_at: string;
-  }[])
+  return (
+    (subs ?? []) as {
+      student_id: string;
+      assignment_id: string;
+      overall_score: number;
+      completeness: number | null;
+      azure_scores: Record<string, unknown> | null;
+      created_at: string;
+    }[]
+  )
     .map((s) => {
       const st = students.get(s.student_id);
       if (!st) return null;

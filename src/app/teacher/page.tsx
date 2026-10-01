@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { applyDueTransfers, coTaughtClassIds } from "@/lib/transfers";
+import { pendingCountForTeacher } from "@/lib/hr/sync";
 import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
@@ -20,30 +21,37 @@ export default async function TeacherDashboard({
     await getTeacherContext();
 
   // 1단계 — 서로 의존하지 않는 조회는 한꺼번에 (순차로 하면 왕복이 그대로 쌓인다)
-  const [coIds, { count: archivedCount }, { count: incomingTransfers }, { data: couponRow }] =
-    await Promise.all([
-      coTaughtClassIds(effectiveId),
-      db
-        .from("classes")
-        .select("id", { count: "exact", head: true })
-        .eq("teacher_id", effectiveId)
-        .not("archived_at", "is", null),
-      // 받은 인수인계 요청 수 (내가 보낸 건 제외)
-      createAdminClient()
-        .from("transfer_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
-        .neq("requested_by", effectiveId)
-        .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`),
-      // 쿠폰/보상 설정
-      db
-        .from("teachers")
-        .select("coupon_goal, coupon_reward_text")
-        .eq("id", effectiveId)
-        .single(),
-      // 적용일이 된 예약 이동 반영 (결과를 기다릴 필요는 없지만 같이 태운다)
-      applyDueTransfers(),
-    ]);
+  const [
+    coIds,
+    { count: archivedCount },
+    { count: incomingTransfers },
+    { data: couponRow },
+    pendingRoster,
+  ] = await Promise.all([
+    coTaughtClassIds(effectiveId),
+    db
+      .from("classes")
+      .select("id", { count: "exact", head: true })
+      .eq("teacher_id", effectiveId)
+      .not("archived_at", "is", null),
+    // 받은 인수인계 요청 수 (내가 보낸 건 제외)
+    createAdminClient()
+      .from("transfer_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .neq("requested_by", effectiveId)
+      .or(`from_teacher_id.eq.${effectiveId},to_teacher_id.eq.${effectiveId}`),
+    // 쿠폰/보상 설정
+    db
+      .from("teachers")
+      .select("coupon_goal, coupon_reward_text")
+      .eq("id", effectiveId)
+      .single(),
+    // HR manager 명단과 비교해 등록이 필요한 학생 수 (저장된 값만 읽는다)
+    pendingCountForTeacher(effectiveId),
+    // 적용일이 된 예약 이동 반영 (결과를 기다릴 필요는 없지만 같이 태운다)
+    applyDueTransfers(),
+  ]);
 
   const couponGoal = couponRow?.coupon_goal ?? 25;
   const couponRewardText = couponRow?.coupon_reward_text ?? "";
@@ -52,14 +60,12 @@ export default async function TeacherDashboard({
   const classesQuery = db
     .from("classes")
     .select(
-      "id, name, class_code, teacher_id, created_at, students(count), assignments(count)"
+      "id, name, class_code, teacher_id, created_at, students(count), assignments(count)",
     )
     .is("archived_at", null)
     .order("created_at", { ascending: false });
   const { data: classes } = await (coIds.length
-    ? classesQuery.or(
-        `teacher_id.eq.${effectiveId},id.in.(${coIds.join(",")})`
-      )
+    ? classesQuery.or(`teacher_id.eq.${effectiveId},id.in.(${coIds.join(",")})`)
     : classesQuery.eq("teacher_id", effectiveId));
 
   // 반별 가입 승인 대기 수
@@ -78,7 +84,9 @@ export default async function TeacherDashboard({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
+      {isImpersonating && actingName && (
+        <ImpersonationBanner name={actingName} />
+      )}
       {/* 좁은 화면에서 제목과 메뉴가 겹치지 않도록 두 줄로 나눈다 */}
       <header className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -94,7 +102,9 @@ export default async function TeacherDashboard({
             </div>
           </div>
           <form action={signOut} className="shrink-0">
-            <button className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}>
+            <button
+              className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+            >
               로그아웃
             </button>
           </form>
@@ -142,6 +152,16 @@ export default async function TeacherDashboard({
             🗂️ 보관반{archivedCount ? ` ${archivedCount}` : ""}
           </Link>
           <Link
+            href="/teacher/roster"
+            className={`${navBtn} ${
+              pendingRoster
+                ? "border-amber-400 bg-amber-50 font-medium text-amber-700 hover:bg-amber-100"
+                : "border-slate-300 text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            🧾 명단 확인{pendingRoster ? ` ${pendingRoster}` : ""}
+          </Link>
+          <Link
             href="/manual/teacher"
             className={`${navBtn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           >
@@ -162,6 +182,23 @@ export default async function TeacherDashboard({
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
           {decodeURIComponent(searchParams.error)}
         </p>
+      )}
+
+      {/* HR manager 명단에 있는데 유스피킹에 아직 없는 학생 알림 */}
+      {pendingRoster > 0 && (
+        <Link
+          href="/teacher/roster"
+          className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+        >
+          <span className="text-lg">🧾</span>
+          <span className="min-w-0 flex-1">
+            <b>등록되지 않은 학생 {pendingRoster}명</b>이 반 명단에 있어요.
+            <span className="block text-xs text-amber-700">
+              눌러서 확인하고 학생을 등록해 주세요.
+            </span>
+          </span>
+          <span className="shrink-0 text-amber-500">→</span>
+        </Link>
       )}
 
       {/* 반 만들기 */}
@@ -241,7 +278,8 @@ export default async function TeacherDashboard({
           </p>
         )}
         {classes?.map((c) => {
-          const studentCount = (c.students as { count: number }[])?.[0]?.count ?? 0;
+          const studentCount =
+            (c.students as { count: number }[])?.[0]?.count ?? 0;
           const assignmentCount =
             (c.assignments as { count: number }[])?.[0]?.count ?? 0;
           return (

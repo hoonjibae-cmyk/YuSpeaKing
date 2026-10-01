@@ -20,12 +20,14 @@ import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
 import { canGrantCoupons } from "@/lib/coupon-helpers";
 import { normalizePhone, sendAlimtalk } from "@/lib/solapi";
+import { hrConfigured } from "@/lib/hr/client";
+import { syncAll, type SyncReport } from "@/lib/hr/sync";
 
 // 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
 async function generateAndStoreSamples(
   assignmentId: string,
   passageText: string,
-  voice?: string
+  voice?: string,
 ) {
   const admin = createAdminClient();
   const [normal, slow] = await Promise.all([
@@ -44,8 +46,8 @@ async function generateAndStoreSamples(
   ]);
   const normalUrl = admin.storage.from("sample-audio").getPublicUrl(normalPath)
     .data.publicUrl;
-  const slowUrl = admin.storage.from("sample-audio").getPublicUrl(slowPath).data
-    .publicUrl;
+  const slowUrl = admin.storage.from("sample-audio").getPublicUrl(slowPath)
+    .data.publicUrl;
   await admin
     .from("assignments")
     .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl })
@@ -59,7 +61,8 @@ export async function signIn(formData: FormData) {
   const password = String(formData.get("password") || "");
   const supabase = createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) redirect(`/teacher/login?error=${encodeURIComponent(error.message)}`);
+  if (error)
+    redirect(`/teacher/login?error=${encodeURIComponent(error.message)}`);
 
   // 운영자는 로그인 즉시 운영자 대시보드로
   const {
@@ -86,8 +89,8 @@ export async function signUp(formData: FormData) {
   if (!email || !password || !name) {
     redirect(
       `/teacher/login?mode=signup&error=${encodeURIComponent(
-        "이름·이메일·비밀번호를 모두 입력해 주세요"
-      )}`
+        "이름·이메일·비밀번호를 모두 입력해 주세요",
+      )}`,
     );
   }
 
@@ -99,7 +102,7 @@ export async function signUp(formData: FormData) {
   });
   if (error) {
     redirect(
-      `/teacher/login?mode=signup&error=${encodeURIComponent(error.message)}`
+      `/teacher/login?mode=signup&error=${encodeURIComponent(error.message)}`,
     );
   }
 
@@ -196,7 +199,7 @@ export async function renameClass(formData: FormData) {
   if (!classId) redirect("/teacher");
   if (!name) {
     redirect(
-      `/teacher/classes/${classId}?error=${encodeURIComponent("반 이름을 입력해 주세요")}`
+      `/teacher/classes/${classId}?error=${encodeURIComponent("반 이름을 입력해 주세요")}`,
     );
   }
 
@@ -207,7 +210,7 @@ export async function renameClass(formData: FormData) {
     .eq("teacher_id", effectiveId); // 담임 본인 반만
   if (error) {
     redirect(
-      `/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`
+      `/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`,
     );
   }
 
@@ -281,7 +284,8 @@ export async function moveStudent(formData: FormData) {
   const studentId = String(formData.get("studentId") || "");
   const target = String(formData.get("target") || "");
   // 이동일(비우면 오늘). 미래 날짜면 그 날짜에 자동 반영된다.
-  const effectiveDate = String(formData.get("effective_date") || "") || todayKST();
+  const effectiveDate =
+    String(formData.get("effective_date") || "") || todayKST();
   const back = `/teacher/move?classId=${classId}`;
   if (!studentId || !target) redirect(back);
 
@@ -306,7 +310,10 @@ export async function moveStudent(formData: FormData) {
       .eq("id", id)
       .eq("teacher_id", effectiveId)
       .maybeSingle();
-    if (!dest) redirect(`${back}&error=${encodeURIComponent("옮길 반을 찾을 수 없어요")}`);
+    if (!dest)
+      redirect(
+        `${back}&error=${encodeURIComponent("옮길 반을 찾을 수 없어요")}`,
+      );
 
     if (effectiveDate <= todayKST()) {
       await moveStudentToClass(studentId, id);
@@ -365,7 +372,7 @@ export async function moveStudent(formData: FormData) {
       `• 학생: ${student.name}\n` +
       `• 보내는 선생님: ${me?.name ?? "선생님"}\n` +
       `• 이동 예정일: ${effectiveDate}\n` +
-      `👉 수락하러 가기: ${transfersUrl()}`
+      `👉 수락하러 가기: ${transfersUrl()}`,
   );
 
   revalidatePath(back);
@@ -399,7 +406,9 @@ export async function requestClassTransfer(formData: FormData) {
   const toTeacher = give ? otherTeacherId : effectiveId;
 
   if (klass.teacher_id !== fromTeacher) {
-    redirect(`${back}?error=${encodeURIComponent("담임 정보가 바뀌었어요. 새로고침해 주세요")}`);
+    redirect(
+      `${back}?error=${encodeURIComponent("담임 정보가 바뀌었어요. 새로고침해 주세요")}`,
+    );
   }
   if (fromTeacher === toTeacher) redirect(back);
 
@@ -410,7 +419,7 @@ export async function requestClassTransfer(formData: FormData) {
     String(formData.get("effective_date") || "") || todayKST();
   if (coteachStart && coteachStart > effectiveDate) {
     redirect(
-      `${back}?error=${encodeURIComponent("공동 관리 시작일은 담임 변경일보다 앞서야 해요")}`
+      `${back}?error=${encodeURIComponent("공동 관리 시작일은 담임 변경일보다 앞서야 해요")}`,
     );
   }
 
@@ -438,12 +447,14 @@ export async function requestClassTransfer(formData: FormData) {
     `🔀 유스피킹앱 반 인수인계 요청\n` +
       `• 반: ${klass.name}\n` +
       `• 요청: ${me?.name ?? "선생님"} 님이 ${
-        give ? "이 반의 담임을 넘기려고 합니다" : "이 반의 담임을 맡으려고 합니다"
+        give
+          ? "이 반의 담임을 넘기려고 합니다"
+          : "이 반의 담임을 맡으려고 합니다"
       }\n` +
       (coteachStart
         ? `• 공동 관리: ${coteachStart} ~ ${effectiveDate}\n• 담임 변경일: ${effectiveDate}\n`
         : `• 담임 변경일: ${effectiveDate}\n`) +
-      `👉 수락하러 가기: ${transfersUrl()}`
+      `👉 수락하러 가기: ${transfersUrl()}`,
   );
 
   revalidatePath(back);
@@ -462,7 +473,7 @@ export async function acceptTransfer(formData: FormData) {
   const { data: reqRow } = await admin
     .from("transfer_requests")
     .select(
-      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, status, effective_date, coteach_start"
+      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, status, effective_date, coteach_start",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -470,7 +481,8 @@ export async function acceptTransfer(formData: FormData) {
 
   // 수락 권한: 요청을 보낸 사람이 아니면서, 당사자여야 한다
   const involved =
-    reqRow.from_teacher_id === effectiveId || reqRow.to_teacher_id === effectiveId;
+    reqRow.from_teacher_id === effectiveId ||
+    reqRow.to_teacher_id === effectiveId;
   if (!involved || reqRow.requested_by === effectiveId) {
     redirect(`${back}?error=${encodeURIComponent("수락 권한이 없어요")}`);
   }
@@ -493,7 +505,9 @@ export async function acceptTransfer(formData: FormData) {
       .eq("teacher_id", reqRow.to_teacher_id)
       .maybeSingle();
     if (!dest) {
-      redirect(`${back}?error=${encodeURIComponent("옮길 반을 선택해 주세요")}`);
+      redirect(
+        `${back}?error=${encodeURIComponent("옮길 반을 선택해 주세요")}`,
+      );
     }
     update.target_class_id = targetClassId;
     if (dueNow) {
@@ -512,7 +526,7 @@ export async function acceptTransfer(formData: FormData) {
           starts_on: coStart,
           ends_on: effective,
         },
-        { onConflict: "class_id,teacher_id" }
+        { onConflict: "class_id,teacher_id" },
       );
     }
     if (dueNow) {
@@ -521,10 +535,10 @@ export async function acceptTransfer(formData: FormData) {
         .update({ teacher_id: reqRow.to_teacher_id })
         .eq("id", reqRow.class_id);
       await admin
-      .from("class_coteachers")
-      .delete()
-      .eq("class_id", reqRow.class_id)
-      .eq("role", "full");
+        .from("class_coteachers")
+        .delete()
+        .eq("class_id", reqRow.class_id)
+        .eq("role", "full");
       update.applied_at = new Date().toISOString();
     }
   }
@@ -542,7 +556,7 @@ export async function acceptTransfer(formData: FormData) {
         : `${effective}에 ${what} 이동이 자동으로 적용됩니다.`) +
       (reqRow.kind === "class" && reqRow.coteach_start
         ? `\n공동 관리 기간: ${reqRow.coteach_start} ~ ${effective}`
-        : "")
+        : ""),
   );
 
   revalidatePath("/teacher");
@@ -561,15 +575,19 @@ export async function resolveTransfer(formData: FormData) {
   const admin = createAdminClient();
   const { data: reqRow } = await admin
     .from("transfer_requests")
-    .select("id, class_id, from_teacher_id, to_teacher_id, requested_by, status, applied_at")
+    .select(
+      "id, class_id, from_teacher_id, to_teacher_id, requested_by, status, applied_at",
+    )
     .eq("id", requestId)
     .maybeSingle();
   // 이미 반영된 건은 되돌리지 않는다
   if (!reqRow || reqRow.applied_at) redirect(back);
-  if (reqRow.status !== "pending" && reqRow.status !== "accepted") redirect(back);
+  if (reqRow.status !== "pending" && reqRow.status !== "accepted")
+    redirect(back);
 
   const involved =
-    reqRow.from_teacher_id === effectiveId || reqRow.to_teacher_id === effectiveId;
+    reqRow.from_teacher_id === effectiveId ||
+    reqRow.to_teacher_id === effectiveId;
   if (!involved) redirect(back);
 
   // 대기 중: 취소는 보낸 사람만, 거절은 받은 사람만
@@ -604,7 +622,7 @@ export async function resolveTransfer(formData: FormData) {
     const me = await teacherContact(effectiveId);
     await notifyTeacherById(
       reqRow.requested_by,
-      `🚫 유스피킹앱 인수인계 요청이 거절되었어요\n${me?.name ?? "선생님"} 님이 요청을 거절했습니다.`
+      `🚫 유스피킹앱 인수인계 요청이 거절되었어요\n${me?.name ?? "선생님"} 님이 요청을 거절했습니다.`,
     );
   }
 
@@ -623,7 +641,9 @@ export async function createNotice(formData: FormData) {
   const target = String(formData.get("target") || "").trim();
 
   if (!title) {
-    redirect(`/teacher/notices?error=${encodeURIComponent("제목을 입력해 주세요")}`);
+    redirect(
+      `/teacher/notices?error=${encodeURIComponent("제목을 입력해 주세요")}`,
+    );
   }
 
   let scope: "class" | "my_classes" | "all" = "my_classes";
@@ -632,7 +652,7 @@ export async function createNotice(formData: FormData) {
     // 전체 공지는 운영자만
     if (role !== "admin") {
       redirect(
-        `/teacher/notices?error=${encodeURIComponent("전체 공지는 운영자만 쓸 수 있어요")}`
+        `/teacher/notices?error=${encodeURIComponent("전체 공지는 운영자만 쓸 수 있어요")}`,
       );
     }
     scope = "all";
@@ -658,7 +678,7 @@ export async function createNotice(formData: FormData) {
 
   if (error || !notice) {
     redirect(
-      `/teacher/notices?error=${encodeURIComponent(error?.message || "공지 등록 실패")}`
+      `/teacher/notices?error=${encodeURIComponent(error?.message || "공지 등록 실패")}`,
     );
   }
 
@@ -688,7 +708,11 @@ export async function deleteNotice(formData: FormData) {
   const { db, effectiveId } = await getTeacherContext();
   const noticeId = String(formData.get("noticeId") || "");
   if (noticeId) {
-    await db.from("notices").delete().eq("id", noticeId).eq("author_id", effectiveId);
+    await db
+      .from("notices")
+      .delete()
+      .eq("id", noticeId)
+      .eq("author_id", effectiveId);
   }
   revalidatePath("/teacher/notices");
 }
@@ -760,7 +784,10 @@ export async function grantCoupon(formData: FormData) {
   if (!s) redirect(back);
 
   const next = Math.max(0, (s.bonus_coupons ?? 0) + delta);
-  await admin.from("students").update({ bonus_coupons: next }).eq("id", studentId);
+  await admin
+    .from("students")
+    .update({ bonus_coupons: next })
+    .eq("id", studentId);
   revalidatePath(back);
   revalidatePath(`/teacher/classes/${classId}`);
 }
@@ -782,7 +809,9 @@ export async function setCouponHelper(formData: FormData) {
     .eq("id", classId)
     .maybeSingle();
   if (!klass || klass.teacher_id !== effectiveId) {
-    redirect(`${back}?error=${encodeURIComponent("담임 선생님만 지정할 수 있어요")}`);
+    redirect(
+      `${back}?error=${encodeURIComponent("담임 선생님만 지정할 수 있어요")}`,
+    );
   }
   if (teacherId === effectiveId) redirect(back);
 
@@ -801,7 +830,7 @@ export async function setCouponHelper(formData: FormData) {
     .from("class_coteachers")
     .upsert(
       { class_id: classId, teacher_id: teacherId, role: "coupon" },
-      { onConflict: "class_id,teacher_id" }
+      { onConflict: "class_id,teacher_id" },
     );
   if (error) {
     redirect(`${back}?error=${encodeURIComponent(error.message)}`);
@@ -814,7 +843,7 @@ export async function setCouponHelper(formData: FormData) {
       `• 반: ${klass.name}\n` +
       `• 지정: ${me?.name ?? "선생님"}\n` +
       `이 반 학생들에게 쿠폰을 줄 수 있어요. (과제·채점은 담임 선생님이 관리)\n` +
-      `👉 쿠폰 주러 가기: ${appOrigin()}/teacher/coupons`
+      `👉 쿠폰 주러 가기: ${appOrigin()}/teacher/coupons`,
   );
 
   revalidatePath(back);
@@ -836,8 +865,7 @@ export async function addStudent(formData: FormData) {
     .from("students")
     .insert({ class_id: classId, name, number });
   if (error) {
-    const msg =
-      error.code === "23505" ? "이미 있는 번호입니다" : error.message;
+    const msg = error.code === "23505" ? "이미 있는 번호입니다" : error.message;
     redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/teacher/classes/${classId}`);
@@ -854,7 +882,10 @@ export async function bulkAddStudents(formData: FormData) {
   for (const line of raw.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
-    const parts = t.split(/[\t,]+|\s{2,}|\s(?=\d)/).map((p) => p.trim()).filter(Boolean);
+    const parts = t
+      .split(/[\t,]+|\s{2,}|\s(?=\d)/)
+      .map((p) => p.trim())
+      .filter(Boolean);
     // 첫 토큰이 숫자면 번호, 아니면 두 번째에서 숫자 탐색
     let number = NaN;
     let name = "";
@@ -871,7 +902,9 @@ export async function bulkAddStudents(formData: FormData) {
   }
 
   if (rows.length === 0) {
-    redirect(`/teacher/classes/${classId}?error=형식을+확인하세요+(예: 1,민수)`);
+    redirect(
+      `/teacher/classes/${classId}?error=형식을+확인하세요+(예: 1,민수)`,
+    );
   }
 
   // 번호 기준 upsert (이미 있는 번호는 이름 갱신 → 재업로드 안전)
@@ -879,7 +912,9 @@ export async function bulkAddStudents(formData: FormData) {
     .from("students")
     .upsert(rows, { onConflict: "class_id,number" });
   if (error) {
-    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`);
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent(error.message)}`,
+    );
   }
   revalidatePath(`/teacher/classes/${classId}`);
 }
@@ -938,7 +973,8 @@ export async function approveStudent(formData: FormData) {
   // 최초 승인 시점만 기록 (재승인해도 원래 등록일은 유지)
   if (!current?.approved_at) update.approved_at = new Date().toISOString();
   // 학부모 열람 링크 토큰 발급 (없을 때만)
-  if (!current?.parent_token) update.parent_token = randomBytes(16).toString("hex");
+  if (!current?.parent_token)
+    update.parent_token = randomBytes(16).toString("hex");
   if (name) update.name = name;
   if (school) update.school = school;
   if (grade) update.grade = grade;
@@ -984,8 +1020,8 @@ export async function resetStudentPassword(formData: FormData) {
 
   redirect(
     `/teacher/classes/${classId}?pwreset=${encodeURIComponent(
-      `${s.username ?? ""}|${temp}`
-    )}`
+      `${s.username ?? ""}|${temp}`,
+    )}`,
   );
 }
 
@@ -1020,8 +1056,8 @@ export async function createAssignment(formData: FormData) {
   if (error || !assignment) {
     redirect(
       `/teacher/classes/${classId}?error=${encodeURIComponent(
-        error?.message || "과제 생성 실패"
-      )}`
+        error?.message || "과제 생성 실패",
+      )}`,
     );
   }
 
@@ -1123,7 +1159,7 @@ export async function updateAssignment(formData: FormData) {
       await generateAndStoreSamples(
         assignmentId,
         passageText,
-        current.sample_voice ?? undefined
+        current.sample_voice ?? undefined,
       );
     } catch (e) {
       console.error("[TTS] 수정 후 재생성 실패:", e);
@@ -1152,7 +1188,7 @@ export async function deleteAssignment(formData: FormData) {
 async function ownedStudent(
   db: Awaited<ReturnType<typeof getTeacherContext>>["db"],
   effectiveId: string,
-  studentId: string
+  studentId: string,
 ) {
   const { data } = await db
     .from("students")
@@ -1181,7 +1217,7 @@ export async function generateMonthlyDraft(formData: FormData) {
     student.id,
     student.class_id,
     month,
-    student.approved_at
+    student.approved_at,
   );
   let content: string;
   try {
@@ -1190,8 +1226,8 @@ export async function generateMonthlyDraft(formData: FormData) {
     console.error("[월말리포트] 생성 실패:", e);
     redirect(
       `/teacher/students/${studentId}/monthly?month=${month}&error=${encodeURIComponent(
-        "초안 생성 실패 (Anthropic 키 확인)"
-      )}`
+        "초안 생성 실패 (Anthropic 키 확인)",
+      )}`,
     );
   }
 
@@ -1199,7 +1235,7 @@ export async function generateMonthlyDraft(formData: FormData) {
     .from("monthly_reports")
     .upsert(
       { student_id: studentId, year_month: month, content },
-      { onConflict: "student_id,year_month" }
+      { onConflict: "student_id,year_month" },
     );
   revalidatePath(`/teacher/students/${studentId}/monthly`);
 }
@@ -1244,11 +1280,14 @@ export async function generateClassMonthlyDrafts(formData: FormData) {
     .from("monthly_reports")
     .select("student_id, content")
     .eq("year_month", month)
-    .in("student_id", students.map((s) => s.id));
+    .in(
+      "student_id",
+      students.map((s) => s.id),
+    );
   const has = new Set(
     ((existing ?? []) as { student_id: string; content: string }[])
       .filter((r) => r.content?.trim())
-      .map((r) => r.student_id)
+      .map((r) => r.student_id),
   );
 
   const todo = redo ? students : students.filter((s) => !has.has(s.id));
@@ -1264,14 +1303,14 @@ export async function generateClassMonthlyDrafts(formData: FormData) {
         st.id,
         st.class_id,
         month,
-        st.approved_at
+        st.approved_at,
       );
       const content = await generateMonthlyReportDraft(st.name, month, data);
       await db
         .from("monthly_reports")
         .upsert(
           { student_id: st.id, year_month: month, content },
-          { onConflict: "student_id,year_month" }
+          { onConflict: "student_id,year_month" },
         );
       made++;
     } catch (e) {
@@ -1306,7 +1345,9 @@ export async function sendClassReports(formData: FormData) {
     .maybeSingle();
   if (!klass || !month) redirect("/teacher");
   if (picked.length === 0) {
-    redirect(`${back}&error=${encodeURIComponent("보낼 학생을 선택해 주세요")}`);
+    redirect(
+      `${back}&error=${encodeURIComponent("보낼 학생을 선택해 주세요")}`,
+    );
   }
 
   const { data: studentRows } = await db
@@ -1327,11 +1368,13 @@ export async function sendClassReports(formData: FormData) {
     .eq("year_month", month)
     .in("student_id", picked);
   const reports = new Map(
-    ((reportRows ?? []) as {
-      student_id: string;
-      share_token: string | null;
-      content: string;
-    }[]).map((r) => [r.student_id, r])
+    (
+      (reportRows ?? []) as {
+        student_id: string;
+        share_token: string | null;
+        content: string;
+      }[]
+    ).map((r) => [r.student_id, r]),
   );
 
   const origin = appOrigin();
@@ -1367,8 +1410,8 @@ export async function sendClassReports(formData: FormData) {
   if (targets.length === 0) {
     redirect(
       `${back}&error=${encodeURIComponent(
-        `보낼 수 있는 학생이 없어요. ${skipped.join(", ")}`
-      )}`
+        `보낼 수 있는 학생이 없어요. ${skipped.join(", ")}`,
+      )}`,
     );
   }
 
@@ -1389,7 +1432,7 @@ export async function sendClassReports(formData: FormData) {
 
   revalidatePath(back);
   redirect(
-    `${back}&${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`
+    `${back}&${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`,
   );
 }
 
@@ -1407,8 +1450,8 @@ export async function saveParentPhone(formData: FormData) {
   if (raw.trim() && !phone) {
     redirect(
       `/teacher/classes/${classId}?error=${encodeURIComponent(
-        "연락처 형식을 확인해 주세요 (예: 010-1234-5678)"
-      )}`
+        "연락처 형식을 확인해 주세요 (예: 010-1234-5678)",
+      )}`,
     );
   }
 
@@ -1434,8 +1477,8 @@ export async function shareMonthlyReport(formData: FormData) {
   if (!row?.content?.trim()) {
     redirect(
       `/teacher/students/${studentId}/monthly?month=${month}&error=${encodeURIComponent(
-        "리포트 내용을 먼저 저장해 주세요"
-      )}`
+        "리포트 내용을 먼저 저장해 주세요",
+      )}`,
     );
   }
 
@@ -1460,7 +1503,7 @@ export async function saveMonthlyReport(formData: FormData) {
     .from("monthly_reports")
     .upsert(
       { student_id: studentId, year_month: month, content },
-      { onConflict: "student_id,year_month" }
+      { onConflict: "student_id,year_month" },
     );
   revalidatePath(`/teacher/students/${studentId}/monthly`);
 }
@@ -1482,7 +1525,7 @@ export async function regenerateSample(formData: FormData) {
   const picked = String(formData.get("voice") || "").trim();
   const voice = picked
     ? normalizeVoice(picked)
-    : assignment.sample_voice ?? undefined;
+    : (assignment.sample_voice ?? undefined);
   if (picked) {
     await db
       .from("assignments")
@@ -1491,12 +1534,99 @@ export async function regenerateSample(formData: FormData) {
   }
 
   try {
-    await generateAndStoreSamples(assignment.id, assignment.passage_text, voice);
+    await generateAndStoreSamples(
+      assignment.id,
+      assignment.passage_text,
+      voice,
+    );
   } catch (e) {
     console.error("[TTS] 재생성 실패:", e);
-    redirect(`/teacher/classes/${classId}?error=샘플음성+생성+실패+(OpenAI+키+확인)`);
+    redirect(
+      `/teacher/classes/${classId}?error=샘플음성+생성+실패+(OpenAI+키+확인)`,
+    );
   }
 
   revalidatePath(`/teacher/classes/${classId}`);
   revalidatePath(`/teacher/classes/${classId}/archive`);
+}
+
+// ---------- HR manager 명단 ----------
+
+// 내 반 명단을 지금 다시 확인. 결과는 hr_pending_students 에 쌓이고
+// 화면은 그것만 읽으므로, 이 버튼을 누를 때만 외부 API 를 부른다.
+export async function refreshMyRoster() {
+  const { effectiveId } = await getTeacherContext();
+
+  if (!hrConfigured()) {
+    redirect(
+      `/teacher/roster?error=${encodeURIComponent(
+        "HR manager 연동이 설정되지 않았어요. 운영자에게 문의해 주세요.",
+      )}`,
+    );
+  }
+
+  let reports: SyncReport[];
+  try {
+    reports = await syncAll(effectiveId);
+  } catch (e) {
+    console.error("[HR] 명단 확인 실패:", e);
+    redirect(
+      `/teacher/roster?error=${encodeURIComponent(
+        e instanceof Error ? e.message : "명단을 받아오지 못했어요.",
+      )}`,
+    );
+  }
+
+  const failed = reports.filter((r) => r.error);
+  if (failed.length && failed.length === reports.length) {
+    redirect(
+      `/teacher/roster?error=${encodeURIComponent(
+        `명단을 받아오지 못했어요 — ${failed[0].error ?? ""}`,
+      )}`,
+    );
+  }
+
+  const updated = reports.reduce((n, r) => n + r.updated, 0);
+  const pending = reports.reduce(
+    (n, r) => n + r.pendingNew + r.pendingAmbiguous,
+    0,
+  );
+  const msg =
+    reports.length === 0
+      ? "이어진 반이 없어요. 운영자가 반을 이어 주면 명단을 받아옵니다."
+      : `${reports.length}개 반을 확인했어요. 연락처 ${updated}명 갱신 · 확인 필요 ${pending}명` +
+        (failed.length ? ` (${failed.length}개 반은 조회 실패)` : "");
+
+  revalidatePath("/teacher/roster");
+  revalidatePath("/teacher");
+  redirect(`/teacher/roster?done=${encodeURIComponent(msg)}`);
+}
+
+// 대기 목록에서 한 건 숨기기 (퇴원했거나 유스피킹에 등록할 필요가 없는 학생).
+// 다음 동기화에서 다시 올라오면 또 보인다 — 영구 무시가 아니라 '이번엔 넘기기'.
+export async function dismissPendingStudent(formData: FormData) {
+  const { effectiveId } = await getTeacherContext();
+  const pendingId = String(formData.get("pendingId") || "");
+  if (!pendingId) redirect("/teacher/roster");
+
+  const admin = createAdminClient();
+  // 남의 반 건을 지우지 못하도록 내 반인지 확인한다
+  const { data: row } = await admin
+    .from("hr_pending_students")
+    .select("id, class_id")
+    .eq("id", pendingId)
+    .maybeSingle();
+  if (!row) redirect("/teacher/roster");
+
+  const { data: klass } = await admin
+    .from("classes")
+    .select("id")
+    .eq("id", (row as { class_id: string }).class_id)
+    .eq("teacher_id", effectiveId)
+    .maybeSingle();
+  if (!klass) redirect("/teacher/roster");
+
+  await admin.from("hr_pending_students").delete().eq("id", pendingId);
+  revalidatePath("/teacher/roster");
+  revalidatePath("/teacher");
 }

@@ -14,6 +14,7 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
 import { appOrigin } from "@/lib/app-url";
+import { unlinkedClassCount } from "@/lib/hr/sync";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +28,9 @@ function kstWeekWindow(offset: number): {
   const kst = new Date(now.getTime() + 9 * 3600 * 1000);
   const dow = kst.getUTCDay(); // 0=일..6=토 (KST 벽시계)
   const sinceMon = (dow + 6) % 7;
-  const mondayKstMidnight = Date.UTC(
-    kst.getUTCFullYear(),
-    kst.getUTCMonth(),
-    kst.getUTCDate()
-  ) - sinceMon * 86400000;
+  const mondayKstMidnight =
+    Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) -
+    sinceMon * 86400000;
   const startKst = mondayKstMidnight - offset * 7 * 86400000;
   const endKst = startKst + 7 * 86400000;
   // KST 벽시계 자정 → 실제 UTC 순간(−9h)
@@ -58,19 +57,27 @@ export default async function AdminDashboard({
 
   const weekOffset = Math.max(
     0,
-    Math.min(8, parseInt(searchParams.week || "0", 10) || 0)
+    Math.min(8, parseInt(searchParams.week || "0", 10) || 0),
   );
   const { startUtc, endUtc, label: weekLabel } = kstWeekWindow(weekOffset);
 
-  const [teachersRes, classesRes, studentsRes, assignmentsRes, submissionsRes] =
-    await Promise.all([
-      admin.from("teachers").select("id, name, email, role, status"),
-      admin.from("classes").select("id, teacher_id").is("archived_at", null),
-      // 승인된 학생만 — 승인 대기 학생이 제출률 분모에 섞이면 통계가 어긋난다
-      admin.from("students").select("id, class_id").eq("status", "approved"),
-      admin.from("assignments").select("id, class_id, created_at"),
-      admin.from("submissions").select("assignment_id, overall_score, status"),
-    ]);
+  const [
+    teachersRes,
+    classesRes,
+    studentsRes,
+    assignmentsRes,
+    submissionsRes,
+    unlinkedClasses,
+  ] = await Promise.all([
+    admin.from("teachers").select("id, name, email, role, status"),
+    admin.from("classes").select("id, teacher_id").is("archived_at", null),
+    // 승인된 학생만 — 승인 대기 학생이 제출률 분모에 섞이면 통계가 어긋난다
+    admin.from("students").select("id, class_id").eq("status", "approved"),
+    admin.from("assignments").select("id, class_id, created_at"),
+    admin.from("submissions").select("assignment_id, overall_score, status"),
+    // HR manager 반과 이어지지 않은 반 수 (알림용)
+    unlinkedClassCount(),
+  ]);
 
   // 이번 달 AI 비용
   const now = new Date();
@@ -107,9 +114,15 @@ export default async function AdminDashboard({
   const classTeacher = new Map(classes.map((c) => [c.id, c.teacher_id]));
   const studentsPerClass = new Map<string, number>();
   students.forEach((s) =>
-    studentsPerClass.set(s.class_id, (studentsPerClass.get(s.class_id) ?? 0) + 1)
+    studentsPerClass.set(
+      s.class_id,
+      (studentsPerClass.get(s.class_id) ?? 0) + 1,
+    ),
   );
-  const subsByAssignment = new Map<string, { overall_score: number | null; status: string }[]>();
+  const subsByAssignment = new Map<
+    string,
+    { overall_score: number | null; status: string }[]
+  >();
   submissions.forEach((s) => {
     const arr = subsByAssignment.get(s.assignment_id) ?? [];
     arr.push(s);
@@ -119,22 +132,24 @@ export default async function AdminDashboard({
   // 교사별 집계 — 선택한 주(週) 기준 (운영자 겸 교사도 포함)
   const rows = teachers
     .map((t) => {
-      const myClasses = classes.filter((c) => c.teacher_id === t.id).map((c) => c.id);
+      const myClasses = classes
+        .filter((c) => c.teacher_id === t.id)
+        .map((c) => c.id);
       const studentCount = myClasses.reduce(
         (a, cid) => a + (studentsPerClass.get(cid) ?? 0),
-        0
+        0,
       );
       const myAssignments = assignments.filter((a) =>
-        myClasses.includes(a.class_id)
+        myClasses.includes(a.class_id),
       );
       const lastUpload = myAssignments.reduce<string | null>(
         (max, a) => (!max || a.created_at > max ? a.created_at : max),
-        null
+        null,
       );
 
       // 선택 주에 생성한 과제
       const weekAssignments = myAssignments.filter(
-        (a) => a.created_at >= startUtc && a.created_at < endUtc
+        (a) => a.created_at >= startUtc && a.created_at < endUtc,
       );
       const weekUploads = weekAssignments.length;
       // 목표: 반 수 × 주 2회
@@ -211,15 +226,43 @@ export default async function AdminDashboard({
         </form>
       </header>
 
-      {/* 선생님 가입 링크 */}
-      <nav className="mt-6">
+      <nav className="mt-6 flex flex-wrap items-center gap-2">
         <Link
           href="/admin/settings"
           className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
         >
           ⚙️ 설정 (AI 모델 · 알림톡)
         </Link>
+        <Link
+          href="/admin/hr"
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+            unlinkedClasses
+              ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+              : "border-slate-300 text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          🔗 반 매칭{unlinkedClasses ? ` ${unlinkedClasses}` : ""}
+        </Link>
       </nav>
+
+      {/* HR manager 반과 이어지지 않은 반 알림 */}
+      {unlinkedClasses > 0 && (
+        <Link
+          href="/admin/hr"
+          className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+        >
+          <span className="text-lg">🔗</span>
+          <span className="min-w-0 flex-1">
+            <b>HR manager 반과 이어지지 않은 반 {unlinkedClasses}개</b>
+            <span className="block text-xs text-amber-700">
+              이어 주기 전에는 그 반의 학생 명단·연락처를 받아오지 않아요.
+            </span>
+          </span>
+          <span className="shrink-0 text-amber-500">→</span>
+        </Link>
+      )}
+
+      {/* 선생님 가입 링크 */}
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">선생님 가입 링크</h2>
@@ -257,7 +300,9 @@ export default async function AdminDashboard({
                   <div className="truncate text-sm font-medium">
                     {t.name || "(이름 없음)"}
                   </div>
-                  <div className="truncate text-xs text-slate-400">{t.email}</div>
+                  <div className="truncate text-xs text-slate-400">
+                    {t.email}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <form action={approveTeacher}>
@@ -315,7 +360,8 @@ export default async function AdminDashboard({
           ))}
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          근사 요율 기준 추정치 · 실제 청구는 각 서비스 콘솔 기준. 환율 1,350원 가정.
+          근사 요율 기준 추정치 · 실제 청구는 각 서비스 콘솔 기준. 환율 1,350원
+          가정.
         </p>
       </section>
 
@@ -429,7 +475,11 @@ export default async function AdminDashboard({
                 </div>
 
                 {r.id !== meUser.id && (
-                  <TeacherAdminActions id={r.id} name={r.name} isAdmin={r.isAdmin} />
+                  <TeacherAdminActions
+                    id={r.id}
+                    name={r.name}
+                    isAdmin={r.isAdmin}
+                  />
                 )}
               </div>
             ))}
@@ -468,7 +518,11 @@ export default async function AdminDashboard({
                   <span className="text-xs text-slate-400">{r.email}</span>
                 </div>
                 {r.id !== meUser.id && (
-                  <TeacherAdminActions id={r.id} name={r.name} isAdmin={r.isAdmin} />
+                  <TeacherAdminActions
+                    id={r.id}
+                    name={r.name}
+                    isAdmin={r.isAdmin}
+                  />
                 )}
               </li>
             ))}
@@ -499,8 +553,15 @@ function TeacherAdminActions({
     <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-2">
       <form action={setTeacherRole}>
         <input type="hidden" name="teacherId" value={id} />
-        <input type="hidden" name="role" value={isAdmin ? "teacher" : "admin"} />
-        <button type="submit" className="text-xs text-slate-400 hover:text-brand">
+        <input
+          type="hidden"
+          name="role"
+          value={isAdmin ? "teacher" : "admin"}
+        />
+        <button
+          type="submit"
+          className="text-xs text-slate-400 hover:text-brand"
+        >
           {isAdmin ? "운영자 해제" : "운영자로 지정"}
         </button>
       </form>

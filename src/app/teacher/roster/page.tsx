@@ -150,7 +150,7 @@ export default async function TeacherRosterPage({
               <p className="mt-1.5 text-xs text-slate-500">
                 {p.kind === "ambiguous"
                   ? "유스피킹의 같은 이름 학생과 자동으로 잇지 못했어요. 이름을 Student Card 와 똑같이 맞춰 주시면 다음 확인 때 연결됩니다."
-                  : "Student Card 명단에는 있는데 유스피킹에 아직 없는 학생이에요."}
+                  : "Student Card 명단에는 있는데, 유스피킹에 가입도 가입 신청도 안 된 학생이에요."}
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">

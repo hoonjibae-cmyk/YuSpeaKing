@@ -44,11 +44,14 @@ export async function syncClass(
     };
   }
 
+  // 승인된 학생뿐 아니라 '가입 신청만 해 둔' 학생(pending)도 이미 들어온
+  // 것으로 본다. 그러지 않으면 신청해 둔 학생을 '등록 안 됨' 으로 올려서,
+  // 선생님에게 매일 승인만 누르면 되는 학생을 등록하라고 알리게 된다.
   const { data: rows } = await admin
     .from("students")
     .select("id, name, hr_student_id")
     .eq("class_id", classId)
-    .eq("status", "approved");
+    .in("status", ["approved", "pending"]);
 
   const locals: LocalStudent[] = (
     (rows ?? []) as { id: string; name: string; hr_student_id: string | null }[]

@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/hr-sync",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/roster-alert",
+      "schedule": "0 5 * * *"
     }
   ]
 }

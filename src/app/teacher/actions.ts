@@ -1378,8 +1378,11 @@ export async function sendClassReports(formData: FormData) {
   );
 
   const origin = appOrigin();
-  // 주소를 못 구하면 버튼이 깨진 링크로 나간다. 보내고 나면 되돌릴 수 없으니
-  // 아예 보내지 않고 알린다.
+  // 알림톡 버튼은 템플릿에 https:// 가 고정으로 박혀 있고, 그 뒤를 이 주소로
+  // 채운다. 그래서 origin 이 'https://호스트' 모양이 아니면 버튼이 깨진다.
+  // (NEXT_PUBLIC_APP_URL 을 https:// 없이 적어 둔 경우가 여기 걸린다.
+  //  환경변수가 아예 비어 있으면 요청 호스트로 채워지므로 여기 걸리지 않는다)
+  // 보내고 나면 되돌릴 수 없으니 아예 보내지 않고 알린다.
   if (!/^https?:\/\/[^/]+/i.test(origin)) {
     redirect(
       `${back}&error=${encodeURIComponent(

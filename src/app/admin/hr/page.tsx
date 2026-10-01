@@ -154,7 +154,10 @@ export default async function AdminHrPage({
       {!hrConfigured() && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
           ⚠️ Student Card 연동이 아직 설정되지 않았어요. Vercel 환경변수{" "}
-          <b className="font-mono text-xs">STUDENT_CARD_ROSTER_KEY</b> 를 등록해 주세요.
+          <b className="font-mono text-xs">STUDENT_CARD_ROSTER_KEY</b> 를{" "}
+          <b>32자 이상</b>으로 등록해 주세요. (Student Card 쪽{" "}
+          <span className="font-mono text-xs">YUSPEAKING_ROSTER_KEY</span> 와 같은
+          값이어야 합니다)
         </p>
       )}
       {hrError && (
@@ -259,7 +262,11 @@ export default async function AdminHrPage({
       </ul>
 
       <p className="mt-4 text-[11px] text-slate-400">
-        · 한 번 이어 두면 반 이름을 바꿔도 연결은 유지됩니다.
+        · 반 이름이 양쪽에서 똑같고 그 이름을 쓰는 반이 양쪽에 하나뿐이면{" "}
+        <b>자동으로 이어집니다.</b> 이름이 다른 반만 여기서 손으로 이어 주세요.
+        <br />· 한 번 이어 두면 반 이름을 바꿔도 연결은 유지됩니다. 다만 연결을
+        해제한 반도 이름이 똑같으면 다음 확인 때 다시 이어지니, 잇지 않으려면{" "}
+        <b>반 이름을 서로 다르게</b> 두세요.
         <br />· 학생은 이름으로 맞추되, Student Card 쪽 이름 뒤 구분자(예:
         홍길동A)는 같은 이름 후보가 하나뿐일 때만 자동으로 잇습니다.
         <br />· 명단은 매일 새벽에 자동으로 다시 받아옵니다.

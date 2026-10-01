@@ -19,7 +19,7 @@ import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
 import { canGrantCoupons } from "@/lib/coupon-helpers";
-import { normalizePhone, sendAlimtalk } from "@/lib/solapi";
+import { bareLink, normalizePhone, sendAlimtalk } from "@/lib/solapi";
 import { hrConfigured } from "@/lib/hr/client";
 import { syncAll, type SyncReport } from "@/lib/hr/sync";
 
@@ -1378,6 +1378,15 @@ export async function sendClassReports(formData: FormData) {
   );
 
   const origin = appOrigin();
+  // 주소를 못 구하면 버튼이 깨진 링크로 나간다. 보내고 나면 되돌릴 수 없으니
+  // 아예 보내지 않고 알린다.
+  if (!/^https?:\/\/[^/]+/i.test(origin)) {
+    redirect(
+      `${back}&error=${encodeURIComponent(
+        "리포트 주소를 만들 수 없어요. 운영자에게 NEXT_PUBLIC_APP_URL 설정을 문의해 주세요.",
+      )}`,
+    );
+  }
   const [y, m] = month.split("-");
   const monthLabel = `${Number(y)}년 ${Number(m)}월`;
 
@@ -1401,7 +1410,8 @@ export async function sendClassReports(formData: FormData) {
       variables: {
         "#{이름}": st.name,
         "#{월}": monthLabel,
-        "#{링크}": `${origin}/report/${rep.share_token}`,
+        // 프로토콜은 템플릿의 `https://#{링크}` 쪽에 고정돼 있다
+        "#{링크}": bareLink(`${origin}/report/${rep.share_token}`),
       },
     });
     sentIds.push(st.id);

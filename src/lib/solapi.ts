@@ -39,6 +39,16 @@ export function alimtalkConfigured(): boolean {
   );
 }
 
+// 알림톡 버튼(웹링크)의 주소를 변수로 넣을 때 쓰는 값.
+//
+// 카카오는 버튼 URL 의 프로토콜을 템플릿에 **고정으로** 적게 한다.
+// 그래서 템플릿에는 `https://#{링크}` 라고 등록하고, 변수에는 프로토콜을 뺀
+// 나머지(도메인부터)만 넣어야 한다. 전체 주소를 그대로 넣으면 버튼이
+// `https://https://...` 가 되어 열리지 않는다.
+export function bareLink(url: string): string {
+  return url.trim().replace(/^https?:\/\//i, "");
+}
+
 // 숫자만 남긴다. 휴대폰 번호 형태가 아니면 null.
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;

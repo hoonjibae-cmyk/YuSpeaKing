@@ -238,7 +238,13 @@ export async function syncAllRosters() {
 
 export async function saveWeeklyReportEmails(formData: FormData) {
   await requireAdmin();
-  const raw = String(formData.get("emails") || "");
+
+  // 두 가지 방법으로 들어온다.
+  //  · picked : 슬랙 멤버 목록에서 체크한 것 (평소)
+  //  · emails : 목록을 못 읽었을 때 직접 적은 것
+  // 둘을 합쳐 두면, 목록에 없는 사람(외부 게스트 등)을 더해 둘 수도 있다.
+  const picked = formData.getAll("picked").map(String);
+  const raw = [String(formData.get("emails") || ""), ...picked].join("\n");
   const { ok, bad } = parseEmails(raw);
 
   // 형태가 틀린 값이 섞여 있으면 저장하지 않고 알린다. 조용히 버리면

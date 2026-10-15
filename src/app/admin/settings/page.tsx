@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AI_MODELS, DEFAULT_AI_MODEL, isKnownModel } from "@/lib/settings";
 import { alimtalkConfigured } from "@/lib/solapi";
+import { listSlackMembers } from "@/lib/slack";
 import {
   saveAiModel,
   saveWeeklyReportEmails,
@@ -35,6 +36,12 @@ export default async function AdminSettingsPage({
     saved && isKnownModel(saved) ? saved : envModel || DEFAULT_AI_MODEL;
 
   const weeklyEmails = await getWeeklyReportEmails();
+  // 슬랙에서 멤버를 읽어 와 고르게 한다. 못 읽으면 직접 적는 칸으로 돌아간다.
+  const slackMembers = await listSlackMembers();
+  // 목록에 없는데 이미 받는 사람으로 들어 있는 주소 (외부 게스트 등)
+  const extraEmails = weeklyEmails.filter(
+    (e) => !(slackMembers ?? []).some((m) => m.email === e),
+  );
   const talkReady = alimtalkConfigured();
   const envRows: [string, boolean][] = [
     ["SOLAPI_API_KEY", !!process.env.SOLAPI_API_KEY],
@@ -133,16 +140,65 @@ export default async function AdminSettingsPage({
         </p>
 
         <form action={saveWeeklyReportEmails} className="mt-3">
-          <label className="text-xs font-medium text-slate-500">
-            받는 사람의 슬랙 이메일 (한 줄에 하나)
-          </label>
-          <textarea
-            name="emails"
-            rows={3}
-            defaultValue={weeklyEmails.join("\n")}
-            placeholder={"finance@example.com\nhead@example.com"}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none"
-          />
+          {slackMembers ? (
+            <>
+              <label className="text-xs font-medium text-slate-500">
+                받는 사람 고르기 (슬랙 워크스페이스 멤버 {slackMembers.length}
+                명)
+              </label>
+              <div className="mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-300">
+                {slackMembers.map((m) => (
+                  <label
+                    key={m.id}
+                    className="flex cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 py-2 last:border-b-0 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      name="picked"
+                      value={m.email}
+                      defaultChecked={weeklyEmails.includes(m.email)}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {m.name}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-slate-400">
+                      {m.email}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-brand">
+                  목록에 없는 사람 직접 적기
+                </summary>
+                <textarea
+                  name="emails"
+                  rows={2}
+                  defaultValue={extraEmails.join("\n")}
+                  placeholder="guest@example.com"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none"
+                />
+              </details>
+            </>
+          ) : (
+            <>
+              <label className="text-xs font-medium text-slate-500">
+                받는 사람의 슬랙 이메일 (한 줄에 하나)
+              </label>
+              <p className="mt-0.5 text-[11px] text-amber-600">
+                ⚠️ 슬랙 멤버 목록을 읽지 못해 직접 적는 칸으로 보여 드려요.
+                (SLACK_BOT_TOKEN 과 users:read 권한을 확인해 주세요)
+              </p>
+              <textarea
+                name="emails"
+                rows={3}
+                defaultValue={weeklyEmails.join("\n")}
+                placeholder={"finance@example.com\nhead@example.com"}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none"
+              />
+            </>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <SubmitButton
               pendingText="저장 중…"

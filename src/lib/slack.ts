@@ -239,3 +239,89 @@ export async function notifyTeacherImage(
     fellBackTo: token ? "이메일 없음" : "SLACK_BOT_TOKEN 없음",
   };
 }
+
+// ============================================================
+//  워크스페이스 멤버 목록
+//
+//  주간 요약 받는 사람을 손으로 타이핑하면 오타 한 글자에 알림이 조용히
+//  사라진다. 슬랙에서 실제 멤버를 읽어 와 고르게 한다.
+//
+//  필요한 권한: users:read, users:read.email (이미 들어 있다)
+// ============================================================
+
+export interface SlackMember {
+  id: string;
+  /** 화면에 보일 이름 (실명 > 표시이름 > 계정명) */
+  name: string;
+  email: string;
+}
+
+// 목록을 못 읽어도 설정 화면은 열려야 하므로 예외 대신 null 을 돌려준다.
+// 부르는 쪽은 null 이면 직접 적는 칸을 보여 준다.
+export async function listSlackMembers(): Promise<SlackMember[] | null> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return null;
+
+  const members: SlackMember[] = [];
+  let cursor = "";
+
+  try {
+    // 멤버가 많으면 나눠서 준다. 몇 백 명 규모라 두세 번이면 끝난다.
+    for (let page = 0; page < 10; page++) {
+      const url = new URL("https://slack.com/api/users.list");
+      url.searchParams.set("limit", "200");
+      if (cursor) url.searchParams.set("cursor", cursor);
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const j = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        members?: Array<{
+          id: string;
+          deleted?: boolean;
+          is_bot?: boolean;
+          name?: string;
+          real_name?: string;
+          profile?: {
+            email?: string;
+            real_name?: string;
+            display_name?: string;
+          };
+        }>;
+        response_metadata?: { next_cursor?: string };
+      };
+      if (!j.ok) {
+        console.error("[slack] users.list 실패:", j.error);
+        return null;
+      }
+
+      for (const m of j.members ?? []) {
+        // 봇·탈퇴자·이메일 없는 계정은 DM 대상이 아니다
+        if (m.deleted || m.is_bot || m.id === "USLACKBOT") continue;
+        const email = m.profile?.email;
+        if (!email) continue;
+        members.push({
+          id: m.id,
+          name:
+            m.profile?.real_name ||
+            m.real_name ||
+            m.profile?.display_name ||
+            m.name ||
+            email,
+          email,
+        });
+      }
+
+      cursor = j.response_metadata?.next_cursor ?? "";
+      if (!cursor) break;
+    }
+  } catch (e) {
+    console.error("[slack] 멤버 목록 조회 오류:", e);
+    return null;
+  }
+
+  return members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}

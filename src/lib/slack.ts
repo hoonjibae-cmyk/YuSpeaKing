@@ -27,7 +27,7 @@ export async function notifySlack(text: string): Promise<void> {
 // 담당 선생님(email)에게 개인 DM. 실패하면 공용 웹훅으로 폴백.
 export async function notifyTeacher(
   email: string | null | undefined,
-  text: string
+  text: string,
 ): Promise<void> {
   const token = process.env.SLACK_BOT_TOKEN;
 
@@ -36,9 +36,9 @@ export async function notifyTeacher(
       // 1) 이메일 → Slack 사용자 ID
       const look = await fetch(
         `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(
-          email
+          email,
         )}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       const lj = (await look.json()) as {
         ok: boolean;
@@ -65,7 +65,7 @@ export async function notifyTeacher(
           lj.error,
           "(email:",
           email,
-          ")"
+          ")",
         );
       }
     } catch (e) {
@@ -75,4 +75,167 @@ export async function notifyTeacher(
 
   // 폴백: 공용 웹훅(설정된 경우)
   await notifySlack(text);
+}
+
+// ============================================================
+//  그림(PNG) 보내기
+//
+//  표를 글로 보내면 보는 사람 기기의 글꼴·너비에 따라 열이 어긋난다.
+//  그림은 어디서 봐도 같아서 주간 요약처럼 표가 든 알림에 쓴다.
+//
+//  슬랙 파일 업로드는 세 걸음이다.
+//    1) files.getUploadURLExternal 로 올릴 주소를 받고
+//    2) 그 주소로 바이트를 올린 뒤
+//    3) files.completeUploadExternal 로 어느 대화에 붙일지 알려 준다
+//
+//  필요한 권한(scope): files:write, im:write
+//  (기존 chat:write, users:read.email 에 더해)
+//  권한이 없으면 글 알림으로 되돌아간다 — 못 보내는 것보다 낫다.
+// ============================================================
+
+interface SlackResult {
+  ok: boolean;
+  /** 그림으로 못 보낸 이유 (글로 대신 보냈을 때) */
+  fellBackTo?: string;
+}
+
+async function slackApi<T>(
+  method: string,
+  token: string,
+  body?: Record<string, unknown>,
+): Promise<T & { ok: boolean; error?: string; needed?: string }> {
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  return (await res.json()) as T & {
+    ok: boolean;
+    error?: string;
+    needed?: string;
+  };
+}
+
+async function uploadImage(
+  token: string,
+  channel: string,
+  png: ArrayBuffer,
+  filename: string,
+  title: string,
+  comment: string,
+): Promise<void> {
+  // 1) 올릴 주소 받기 — 길이를 미리 알려 줘야 한다
+  const url = new URL("https://slack.com/api/files.getUploadURLExternal");
+  url.searchParams.set("filename", filename);
+  url.searchParams.set("length", String(png.byteLength));
+  const upRes = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const up = (await upRes.json()) as {
+    ok: boolean;
+    upload_url?: string;
+    file_id?: string;
+    error?: string;
+    needed?: string;
+  };
+  if (!up.ok || !up.upload_url || !up.file_id) {
+    throw new Error(
+      `getUploadURLExternal: ${up.error ?? "실패"}${
+        up.needed ? ` (필요 권한: ${up.needed})` : ""
+      }`,
+    );
+  }
+
+  // 2) 바이트 올리기
+  const putRes = await fetch(up.upload_url, {
+    method: "POST",
+    body: png,
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+  if (!putRes.ok) throw new Error(`파일 업로드 실패 (${putRes.status})`);
+
+  // 3) 대화에 붙이기
+  const done = await slackApi("files.completeUploadExternal", token, {
+    files: [{ id: up.file_id, title }],
+    channel_id: channel,
+    initial_comment: comment,
+  });
+  if (!done.ok) {
+    throw new Error(
+      `completeUploadExternal: ${done.error ?? "실패"}${
+        done.needed ? ` (필요 권한: ${done.needed})` : ""
+      }`,
+    );
+  }
+}
+
+// 담당자(email)에게 그림 한 장을 DM. 어느 단계든 막히면 글로 대신 보낸다.
+export async function notifyTeacherImage(
+  email: string | null | undefined,
+  png: ArrayBuffer,
+  opts: {
+    filename: string;
+    title: string;
+    comment: string;
+    fallbackText: string;
+  },
+): Promise<SlackResult> {
+  const token = process.env.SLACK_BOT_TOKEN;
+
+  if (token && email) {
+    try {
+      const look = await fetch(
+        `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(
+          email,
+        )}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const lj = (await look.json()) as {
+        ok: boolean;
+        user?: { id: string };
+        error?: string;
+      };
+      if (!lj.ok || !lj.user?.id) {
+        throw new Error(`users.lookupByEmail: ${lj.error ?? "사용자 없음"}`);
+      }
+
+      // DM 대화를 열어 그 채널에 붙인다 (파일은 사람이 아니라 대화에 붙는다)
+      const im = await slackApi<{ channel?: { id: string } }>(
+        "conversations.open",
+        token,
+        { users: lj.user.id },
+      );
+      if (!im.ok || !im.channel?.id) {
+        throw new Error(
+          `conversations.open: ${im.error ?? "실패"}${
+            im.needed ? ` (필요 권한: ${im.needed})` : ""
+          }`,
+        );
+      }
+
+      await uploadImage(
+        token,
+        im.channel.id,
+        png,
+        opts.filename,
+        opts.title,
+        opts.comment,
+      );
+      return { ok: true };
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "알 수 없는 오류";
+      console.error("[slack] 그림 전송 실패 → 글로 대신 보냄:", reason);
+      await notifyTeacher(email, opts.fallbackText);
+      return { ok: true, fellBackTo: reason };
+    }
+  }
+
+  await notifyTeacher(email, opts.fallbackText);
+  return {
+    ok: true,
+    fellBackTo: token ? "이메일 없음" : "SLACK_BOT_TOKEN 없음",
+  };
 }

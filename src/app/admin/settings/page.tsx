@@ -61,7 +61,7 @@ export default async function AdminSettingsPage({
         <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
           ✅{" "}
           {searchParams.saved.startsWith("sent:")
-            ? `주간 요약을 ${searchParams.saved.slice(5)}명에게 보냈어요.`
+            ? `주간 요약을 ${searchParams.saved.slice(5).replace(/^(\d+)/, "$1명에게")} 보냈어요.`
             : searchParams.saved === "weekly"
               ? "받는 사람을 저장했어요. 다음 월요일 낮 12시부터 적용됩니다."
               : "저장했어요. 새로 생성되는 채점·피드백·리포트부터 적용됩니다."}
@@ -158,6 +158,20 @@ export default async function AdminSettingsPage({
           </div>
         </form>
 
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <a
+            href="/api/admin/weekly-image?w=1"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-block rounded-lg border border-brand bg-brand-light px-3 py-1.5 text-sm font-medium text-brand hover:bg-blue-100"
+          >
+            🖼️ 지난주 그림 미리보기
+          </a>
+          <p className="mt-1 text-[11px] text-slate-400">
+            실제로 보내는 그림을 새 창에서 그대로 보여 줍니다. 발송되지 않아요.
+          </p>
+        </div>
+
         {weeklyEmails.length > 0 && (
           <form
             action={sendWeeklyReportNow}
@@ -179,8 +193,15 @@ export default async function AdminSettingsPage({
         )}
 
         <p className="mt-3 text-[11px] text-slate-400">
-          · 슬랙 DM 은 <span className="font-mono">SLACK_BOT_TOKEN</span> 으로
-          보냅니다. 이메일로 슬랙 계정을 찾지 못하면 공용 채널로 대신 갑니다.
+          · 표는 <b>그림 한 장</b>으로 갑니다. 슬랙 앱에{" "}
+          <span className="font-mono">files:write</span> ·{" "}
+          <span className="font-mono">im:write</span> 권한이 있어야 하고, 없으면
+          예전처럼 <b>글로 대신</b> 나갑니다 (안 보내지는 않아요).
+          <br />· 슬랙 DM 은 <span className="font-mono">
+            SLACK_BOT_TOKEN
+          </span>{" "}
+          으로 보냅니다. 이메일로 슬랙 계정을 찾지 못하면 공용 채널로 대신
+          갑니다.
           <br />· 평균 녹음 시간은 이 기능을 켠 뒤 들어온 제출물부터 집계돼요.
         </p>
       </section>

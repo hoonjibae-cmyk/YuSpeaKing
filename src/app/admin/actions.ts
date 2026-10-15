@@ -12,9 +12,7 @@ import {
   setAiModel,
   setWeeklyReportEmails,
 } from "@/lib/settings";
-import { formatWeeklySlack, gatherWeekly } from "@/lib/weekly";
-import { notifyTeacher } from "@/lib/slack";
-import { appOrigin } from "@/lib/app-url";
+import { sendWeeklySummary } from "@/lib/weekly-send";
 import { fetchHrClasses, hrConfigured } from "@/lib/hr/client";
 import { syncAll, syncClass } from "@/lib/hr/sync";
 
@@ -270,14 +268,12 @@ export async function sendWeeklyReportNow() {
     );
   }
 
+  let note = "";
   try {
-    const summary = await gatherWeekly(1);
-    const text =
-      formatWeeklySlack(summary) +
-      `\n\n👉 유스피킹 운영현황: ${appOrigin()}/admin`;
-    for (const email of emails) {
-      await notifyTeacher(email, text);
-    }
+    const r = await sendWeeklySummary(1);
+    // 그림이 아니라 글로 나갔으면 왜 그런지 알려 준다. 그러지 않으면
+    // '보냈다' 는 말만 보고 그림이 간 줄로 안다.
+    if (r.fellBackTo) note = ` — 그림 대신 글로 보냈어요 (${r.fellBackTo})`;
   } catch (e) {
     console.error("[주간요약] 수동 발송 실패:", e);
     redirect(
@@ -287,6 +283,7 @@ export async function sendWeeklyReportNow() {
   }
 
   redirect(
-    "/admin/settings?saved=" + encodeURIComponent(`sent:${emails.length}`),
+    "/admin/settings?saved=" +
+      encodeURIComponent(`sent:${emails.length}${note}`),
   );
 }

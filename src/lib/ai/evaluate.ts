@@ -12,7 +12,7 @@ import { generateFeedback } from "./feedback";
 // 중단된다.
 async function assessSpeech(
   wav: Buffer,
-  referenceText: string
+  referenceText: string,
 ): Promise<AzureScores> {
   const hasAzure =
     !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION;
@@ -55,8 +55,13 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
     const { data: file, error: dlErr } = await admin.storage
       .from("submissions")
       .download(submission.audio_path);
-    if (dlErr || !file) throw new Error(dlErr?.message || "오디오 다운로드 실패");
+    if (dlErr || !file)
+      throw new Error(dlErr?.message || "오디오 다운로드 실패");
     const wav = Buffer.from(await file.arrayBuffer());
+    // 16kHz mono 16-bit WAV — 헤더 44바이트를 뺀 나머지를 초로 환산.
+    // 주간 요약의 '평균 녹음 시간' 이 이 값을 쓴다. 여기서 남기지 않으면
+    // 길이를 아는 곳이 비용 로그뿐인데, 거기엔 어느 반인지가 없다.
+    const audioSeconds = Math.max(0, (wav.length - 44) / 32000);
 
     // 2) 발음평가 (Azure 우선, 없으면 OpenAI Whisper 대체)
     const scores = await assessSpeech(wav, assignment.passage_text);
@@ -70,6 +75,7 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
         status: "evaluated",
         azure_scores: scores,
         overall_score: scores.pronunciation,
+        audio_seconds: audioSeconds,
         // 쿠폰 집계를 가볍게 하려고 완성도는 칼럼으로도 저장한다
         completeness: scores.completeness,
         student_feedback:

@@ -61,3 +61,46 @@ export async function setAiModel(model: string): Promise<void> {
     .eq("id", 1);
   cached = null; // 즉시 반영
 }
+
+// ---------- 주간 요약 받는 사람 ----------
+//
+// 경영지원·교수부장처럼 담당이 바뀔 수 있는 자리라, 재배포 없이 운영자
+// 화면에서 넣고 뺄 수 있게 설정 표에 둔다. 비어 있으면 아무에게도 안 보낸다.
+
+export async function getWeeklyReportEmails(): Promise<string[]> {
+  const { data } = await createAdminClient()
+    .from("app_settings")
+    .select("weekly_report_emails")
+    .eq("id", 1)
+    .maybeSingle();
+  const list =
+    (data as { weekly_report_emails?: string[] | null } | null)
+      ?.weekly_report_emails ?? [];
+  return list.filter((e) => e.trim());
+}
+
+// 줄바꿈이나 쉼표로 구분해 받은 문자열을 정리한다.
+// 형태가 아닌 값은 버린다 — 슬랙 조회가 조용히 실패하면 왜 안 오는지 알 수 없다.
+export function parseEmails(raw: string): { ok: string[]; bad: string[] } {
+  const parts = raw
+    .split(/[\n,;]+/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const ok: string[] = [];
+  const bad: string[] = [];
+  for (const p of parts) {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) {
+      if (!ok.includes(p)) ok.push(p);
+    } else {
+      bad.push(p);
+    }
+  }
+  return { ok, bad };
+}
+
+export async function setWeeklyReportEmails(emails: string[]): Promise<void> {
+  await createAdminClient()
+    .from("app_settings")
+    .update({ weekly_report_emails: emails })
+    .eq("id", 1);
+}

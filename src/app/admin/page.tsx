@@ -14,38 +14,10 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import CopyButton from "@/components/CopyButton";
 import { CrownMark } from "@/components/Logo";
 import { appOrigin } from "@/lib/app-url";
+import { kstWeekWindow } from "@/lib/date";
 import { unlinkedClassCount } from "@/lib/hr/sync";
 
 export const dynamic = "force-dynamic";
-
-// 오프셋 주(0=이번 주)의 [시작, 끝) 구간을 KST 월요일 기준으로 계산
-function kstWeekWindow(offset: number): {
-  startUtc: string;
-  endUtc: string;
-  label: string;
-} {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
-  const dow = kst.getUTCDay(); // 0=일..6=토 (KST 벽시계)
-  const sinceMon = (dow + 6) % 7;
-  const mondayKstMidnight =
-    Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) -
-    sinceMon * 86400000;
-  const startKst = mondayKstMidnight - offset * 7 * 86400000;
-  const endKst = startKst + 7 * 86400000;
-  // KST 벽시계 자정 → 실제 UTC 순간(−9h)
-  const startUtc = new Date(startKst - 9 * 3600 * 1000).toISOString();
-  const endUtc = new Date(endKst - 9 * 3600 * 1000).toISOString();
-  const label =
-    offset === 0
-      ? "이번 주"
-      : offset === 1
-        ? "지난주"
-        : offset === 2
-          ? "지지난주"
-          : `${offset}주 전`;
-  return { startUtc, endUtc, label };
-}
 
 export default async function AdminDashboard({
   searchParams,

@@ -5,7 +5,16 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setImpersonation } from "@/lib/teacher-context";
-import { isKnownModel, setAiModel } from "@/lib/settings";
+import {
+  getWeeklyReportEmails,
+  isKnownModel,
+  parseEmails,
+  setAiModel,
+  setWeeklyReportEmails,
+} from "@/lib/settings";
+import { formatWeeklySlack, gatherWeekly } from "@/lib/weekly";
+import { notifyTeacher } from "@/lib/slack";
+import { appOrigin } from "@/lib/app-url";
 import { fetchHrClasses, hrConfigured } from "@/lib/hr/client";
 import { syncAll, syncClass } from "@/lib/hr/sync";
 
@@ -115,13 +124,21 @@ export async function linkHrClass(formData: FormData) {
 
   let hrName: string;
   try {
-    const selected = (await fetchHrClasses()).find((c) => c.hrClassId === hrClassId);
-    if (!selected) throw new Error("Student Card에서 선택한 반을 찾지 못했습니다.");
+    const selected = (await fetchHrClasses()).find(
+      (c) => c.hrClassId === hrClassId,
+    );
+    if (!selected)
+      throw new Error("Student Card에서 선택한 반을 찾지 못했습니다.");
     hrName = selected.name;
   } catch (error) {
-    redirect("/admin/hr?error=" + encodeURIComponent(
-      error instanceof Error ? error.message : "Student Card 반 목록 조회 실패",
-    ));
+    redirect(
+      "/admin/hr?error=" +
+        encodeURIComponent(
+          error instanceof Error
+            ? error.message
+            : "Student Card 반 목록 조회 실패",
+        ),
+    );
   }
 
   // hr_class_id 에 unique 가 걸려 있다 — 다른 반이 이미 쓰고 있으면 알린다
@@ -216,5 +233,60 @@ export async function syncAllRosters() {
         `${reports.length}개 반 확인 · 연락처 ${updated}명 갱신 · 확인 필요 ${pending}명` +
           (failed.length ? ` · 실패 ${failed.length}개 반` : ""),
       ),
+  );
+}
+
+// ---------- 주간 요약 ----------
+
+export async function saveWeeklyReportEmails(formData: FormData) {
+  await requireAdmin();
+  const raw = String(formData.get("emails") || "");
+  const { ok, bad } = parseEmails(raw);
+
+  // 형태가 틀린 값이 섞여 있으면 저장하지 않고 알린다. 조용히 버리면
+  // 담당자는 등록했다고 믿는데 알림만 안 오는 상태가 된다.
+  if (bad.length) {
+    redirect(
+      "/admin/settings?error=" +
+        encodeURIComponent(
+          `이메일 형식이 아닌 값이 있어요 — ${bad.slice(0, 3).join(", ")}`,
+        ),
+    );
+  }
+
+  await setWeeklyReportEmails(ok);
+  redirect("/admin/settings?saved=weekly");
+}
+
+// 지금 바로 한 번 보내 보기 (월요일까지 기다리지 않고 내용을 확인한다).
+// 지정된 사람 전원에게 실제로 가므로, 화면에서 한 번 더 확인을 받는다.
+export async function sendWeeklyReportNow() {
+  await requireAdmin();
+  const emails = await getWeeklyReportEmails();
+  if (emails.length === 0) {
+    redirect(
+      "/admin/settings?error=" +
+        encodeURIComponent("받는 사람을 먼저 지정해 주세요."),
+    );
+  }
+
+  try {
+    const summary = await gatherWeekly(1);
+    const text =
+      formatWeeklySlack(summary) +
+      `\n\n👉 유스피킹 운영현황: ${appOrigin()}/admin`;
+    for (const email of emails) {
+      await notifyTeacher(email, text);
+    }
+  } catch (e) {
+    console.error("[주간요약] 수동 발송 실패:", e);
+    redirect(
+      "/admin/settings?error=" +
+        encodeURIComponent(e instanceof Error ? e.message : "발송 실패"),
+    );
+  }
+
+  redirect(
+    "/admin/settings?saved=" + encodeURIComponent(`sent:${emails.length}`),
   );
 }

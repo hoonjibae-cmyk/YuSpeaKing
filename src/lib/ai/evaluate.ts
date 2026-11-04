@@ -91,7 +91,7 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
       const [{ data: student }, { count: subCount }] = await Promise.all([
         admin
           .from("students")
-          .select("approved_at")
+          .select("name, approved_at")
           .eq("id", submission.student_id)
           .maybeSingle(),
         admin
@@ -100,6 +100,9 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
           .eq("student_id", submission.student_id),
       ]);
       const feedback = await generateFeedback(scores, assignment.passage_text, {
+        // 이름을 주지 않으면 모델이 인식된 발화에서 이름처럼 보이는 말을
+        // 집어다 쓴다 (학생이 읽기 전에 자기 소개를 하면 특히 그렇다)
+        name: (student?.name as string | null) ?? null,
         approvedAt: (student?.approved_at as string | null) ?? null,
         submissionCount: subCount ?? undefined,
       });

@@ -6,6 +6,9 @@ import SubmitButton from "@/components/SubmitButton";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 
 type Mode = "type" | "pdf";
+
+// 과제 한 개에 넣을 수 있는 최대 문장 수 (녹음 시간 상한과 맞춰 둔 값)
+const MAX_SENTENCES = 15;
 interface Excluded {
   sentence: string;
   reason: string;
@@ -91,6 +94,23 @@ export default function PassageComposer({ classId }: { classId: string }) {
 
   function editSentence(i: number, val: string) {
     setSelected((prev) => prev.map((s, idx) => (idx === i ? val : s)));
+  }
+
+  // AI 가 뺀 문장을 선생님이 되살린다. AI 는 고유명사 등을 보수적으로 빼므로,
+  // 선생님이 보고 '이건 읽혀도 된다' 싶으면 한 번에 넣을 수 있어야 한다.
+  // 본문에 나온 순서대로 끼워 넣어 읽는 흐름이 흐트러지지 않게 한다.
+  function restoreExcluded(i: number) {
+    const sentence = excluded[i]?.sentence;
+    if (!sentence) return;
+    setSelected((prev) => {
+      if (prev.includes(sentence) || prev.length >= MAX_SENTENCES) return prev;
+      const pos = (t: string) => {
+        const at = source.indexOf(t);
+        return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+      };
+      return [...prev, sentence].sort((a, b) => pos(a) - pos(b));
+    });
+    setExcluded((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   return (
@@ -191,8 +211,9 @@ export default function PassageComposer({ classId }: { classId: string }) {
       </p>
       {sentenceLimit > 12 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-          ⏱️ 문장이 많으면 학생 녹음이 <b>3분을 넘길 수 있어요.</b> 읽기가 익숙한
-          반에 쓰시고, 학생에게는 <b>끝까지 쉬지 않고</b> 읽도록 안내해 주세요.
+          ⏱️ 문장이 많으면 학생 녹음이 <b>3분을 넘길 수 있어요.</b> 읽기가
+          익숙한 반에 쓰시고, 학생에게는 <b>끝까지 쉬지 않고</b> 읽도록 안내해
+          주세요.
         </p>
       )}
 
@@ -240,9 +261,27 @@ export default function PassageComposer({ classId }: { classId: string }) {
               </summary>
               <ul className="mt-2 space-y-1.5">
                 {excluded.map((e, i) => (
-                  <li key={i} className="text-xs text-slate-500">
-                    <span className="text-slate-400">“{e.sentence}”</span>
-                    <span className="ml-1 text-amber-600">— {e.reason}</span>
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-xs text-slate-500"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="text-slate-400">“{e.sentence}”</span>
+                      <span className="ml-1 text-amber-600">— {e.reason}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => restoreExcluded(i)}
+                      disabled={selected.length >= MAX_SENTENCES}
+                      title={
+                        selected.length >= MAX_SENTENCES
+                          ? `최대 ${MAX_SENTENCES}문장까지 넣을 수 있어요`
+                          : "선별 문장에 넣기"
+                      }
+                      className="shrink-0 whitespace-nowrap rounded border border-brand px-2 py-0.5 text-[11px] font-medium text-brand hover:bg-brand-light disabled:border-slate-200 disabled:text-slate-300"
+                    >
+                      + 넣기
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -252,7 +291,10 @@ export default function PassageComposer({ classId }: { classId: string }) {
       )}
 
       {/* 3. 과제 정보 + 등록 */}
-      <form action={createAssignment} className="space-y-2 border-t border-slate-100 pt-3">
+      <form
+        action={createAssignment}
+        className="space-y-2 border-t border-slate-100 pt-3"
+      >
         <input type="hidden" name="classId" value={classId} />
         <input type="hidden" name="passage_text" value={passage} />
         <input

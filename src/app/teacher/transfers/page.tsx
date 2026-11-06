@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { acceptTransfer, resolveTransfer, requestClassTransfer } from "../actions";
+import {
+  acceptTransfer,
+  resolveTransfer,
+  requestClassTransfer,
+} from "../actions";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -27,9 +31,12 @@ interface Req {
 export default async function TransfersPage({
   searchParams,
 }: {
-  searchParams: { error?: string; accepted?: string };
+  searchParams: { error?: string; accepted?: string; moved?: string };
 }) {
-  const { effectiveId, isImpersonating, actingName } = await getTeacherContext();
+  const { effectiveId, isImpersonating, actingName, role } =
+    await getTeacherContext();
+  // 운영자는 요청·수락 없이 바로 옮긴다 (대행 중이어도 마찬가지)
+  const isAdmin = role === "admin";
   const admin = createAdminClient();
   const today = todayKST();
 
@@ -39,7 +46,7 @@ export default async function TransfersPage({
   const { data: rows } = await admin
     .from("transfer_requests")
     .select(
-      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, created_at, status, effective_date, coteach_start"
+      "id, kind, student_id, class_id, from_teacher_id, to_teacher_id, requested_by, created_at, status, effective_date, coteach_start",
     )
     .in("status", ["pending", "accepted"])
     .is("applied_at", null)
@@ -55,41 +62,50 @@ export default async function TransfersPage({
 
   // 표시에 필요한 이름들 한 번에 조회
   const teacherIds = Array.from(
-    new Set(all.flatMap((r) => [r.from_teacher_id, r.to_teacher_id]))
+    new Set(all.flatMap((r) => [r.from_teacher_id, r.to_teacher_id])),
   );
   const studentIds = all.map((r) => r.student_id).filter(Boolean) as string[];
   const classIds = all.map((r) => r.class_id);
 
-  const [{ data: teachers }, { data: students }, { data: classes }, { data: myClasses }] =
-    await Promise.all([
-      teacherIds.length
-        ? admin.from("teachers").select("id, name, email").in("id", teacherIds)
-        : Promise.resolve({ data: [] }),
-      studentIds.length
-        ? admin.from("students").select("id, name").in("id", studentIds)
-        : Promise.resolve({ data: [] }),
-      classIds.length
-        ? admin.from("classes").select("id, name").in("id", classIds)
-        : Promise.resolve({ data: [] }),
-      admin
-        .from("classes")
-        .select("id, name")
-        .eq("teacher_id", effectiveId)
-        .is("archived_at", null)
-        .order("name"),
-    ]);
+  const [
+    { data: teachers },
+    { data: students },
+    { data: classes },
+    { data: myClasses },
+  ] = await Promise.all([
+    teacherIds.length
+      ? admin.from("teachers").select("id, name, email").in("id", teacherIds)
+      : Promise.resolve({ data: [] }),
+    studentIds.length
+      ? admin.from("students").select("id, name").in("id", studentIds)
+      : Promise.resolve({ data: [] }),
+    classIds.length
+      ? admin.from("classes").select("id, name").in("id", classIds)
+      : Promise.resolve({ data: [] }),
+    admin
+      .from("classes")
+      .select("id, name")
+      .eq("teacher_id", effectiveId)
+      .is("archived_at", null)
+      .order("name"),
+  ]);
 
   const tName = new Map(
-    ((teachers ?? []) as { id: string; name: string; email: string }[]).map((t) => [
-      t.id,
-      t.name || t.email,
-    ])
+    ((teachers ?? []) as { id: string; name: string; email: string }[]).map(
+      (t) => [t.id, t.name || t.email],
+    ),
   );
   const sName = new Map(
-    ((students ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name])
+    ((students ?? []) as { id: string; name: string }[]).map((s) => [
+      s.id,
+      s.name,
+    ]),
   );
   const cName = new Map(
-    ((classes ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name])
+    ((classes ?? []) as { id: string; name: string }[]).map((c) => [
+      c.id,
+      c.name,
+    ]),
   );
   const mine = (myClasses ?? []) as { id: string; name: string }[];
 
@@ -111,10 +127,9 @@ export default async function TransfersPage({
     ? await admin.from("teachers").select("id, name, email").in("id", ownerIds)
     : { data: [] };
   const ownerName = new Map(
-    ((owners ?? []) as { id: string; name: string | null; email: string }[]).map((t) => [
-      t.id,
-      t.name || t.email,
-    ])
+    (
+      (owners ?? []) as { id: string; name: string | null; email: string }[]
+    ).map((t) => [t.id, t.name || t.email]),
   );
   const otherClasses = otherClassRows.map((c) => ({
     id: c.id,
@@ -141,7 +156,9 @@ export default async function TransfersPage({
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      {isImpersonating && actingName && <ImpersonationBanner name={actingName} />}
+      {isImpersonating && actingName && (
+        <ImpersonationBanner name={actingName} />
+      )}
       <Link href="/teacher" className="text-sm text-slate-500 hover:underline">
         ← 반 목록
       </Link>
@@ -156,6 +173,12 @@ export default async function TransfersPage({
           {decodeURIComponent(searchParams.error)}
         </p>
       )}
+      {searchParams.moved && (
+        <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          ✅ {decodeURIComponent(searchParams.moved)} (두 선생님께 슬랙으로
+          알렸어요)
+        </p>
+      )}
       {searchParams.accepted && (
         <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
           ✅ 인수인계가 완료되었어요.
@@ -168,10 +191,18 @@ export default async function TransfersPage({
           <summary className="cursor-pointer font-semibold text-slate-700">
             🏫 다른 선생님 반 맡아오기
           </summary>
-          <p className="mt-2 text-xs text-slate-500">
-            내가 새 담임을 맡게 될 때 사용해요. 현재 담임 선생님이 수락하면 반 전체가
-            넘어옵니다. (반을 넘겨줄 때는 해당 반 화면에서 요청하세요.)
-          </p>
+          {isAdmin ? (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              🏛️ <b>운영자 권한</b>이라 현재 담임 선생님의 수락 없이{" "}
+              <b>바로 옮겨집니다.</b> 담임 변경일이 오늘이면 지금, 미래면 그날
+              자동으로 넘어가고, 두 선생님께 슬랙으로 알려 드려요.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">
+              내가 새 담임을 맡게 될 때 사용해요. 현재 담임 선생님이 수락하면 반
+              전체가 넘어옵니다. (반을 넘겨줄 때는 해당 반 화면에서 요청하세요.)
+            </p>
+          )}
           <form
             action={requestClassTransfer}
             className="mt-3 flex flex-wrap items-center gap-2"
@@ -212,12 +243,23 @@ export default async function TransfersPage({
                 className="rounded border border-slate-300 px-2 py-1"
               />
             </label>
-            <SubmitButton
-              pendingText="요청 중…"
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-            >
-              인수인계 요청
-            </SubmitButton>
+            {isAdmin ? (
+              <ConfirmSubmitButton
+                message={
+                  "현재 담임 선생님의 수락 없이 이 반을 옮길까요?\n\n학생·과제·제출 기록·쿠폰이 모두 함께 넘어갑니다."
+                }
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+              >
+                바로 옮기기
+              </ConfirmSubmitButton>
+            ) : (
+              <SubmitButton
+                pendingText="요청 중…"
+                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+              >
+                인수인계 요청
+              </SubmitButton>
+            )}
           </form>
         </details>
       )}
@@ -235,8 +277,12 @@ export default async function TransfersPage({
                   className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold text-slate-800">{d.title}</div>
-                    <div className="mt-0.5 text-xs text-slate-500">{d.detail}</div>
+                    <div className="font-semibold text-slate-800">
+                      {d.title}
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {d.detail}
+                    </div>
                     <div className="mt-1 text-[11px] font-medium text-amber-700">
                       {r.effective_date}에 자동으로 적용돼요
                       {r.coteach_start
@@ -283,7 +329,10 @@ export default async function TransfersPage({
                 <div className="mt-0.5 text-xs text-slate-500">{d.detail}</div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <form action={acceptTransfer} className="flex flex-wrap items-center gap-2">
+                  <form
+                    action={acceptTransfer}
+                    className="flex flex-wrap items-center gap-2"
+                  >
                     <input type="hidden" name="requestId" value={r.id} />
                     {r.kind === "student" && (
                       <select
@@ -349,8 +398,12 @@ export default async function TransfersPage({
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-800">{d.title}</div>
-                  <div className="mt-0.5 text-xs text-slate-500">{d.detail}</div>
-                  <div className="mt-1 text-[11px] text-amber-600">상대 선생님의 수락을 기다리는 중</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {d.detail}
+                  </div>
+                  <div className="mt-1 text-[11px] text-amber-600">
+                    상대 선생님의 수락을 기다리는 중
+                  </div>
                 </div>
                 <form action={resolveTransfer} className="shrink-0">
                   <input type="hidden" name="requestId" value={r.id} />

@@ -42,9 +42,11 @@ export default async function ClassDetailPage({
     helper?: string;
   };
 }) {
-  const { db, effectiveId, isImpersonating, actingName } =
+  const { db, effectiveId, isImpersonating, actingName, role } =
     await getTeacherContext();
   const { classId } = params;
+  // 운영자는 인수인계를 요청·수락 없이 바로 처리한다
+  const isAdmin = role === "admin";
 
   // 마감 후 ARCHIVE_AFTER_DAYS 일이 지난 과제는 목록에서 빼고 보관함으로 보낸다.
   // 반이 1년치 과제를 쌓아도 이 화면은 진행 중인 과제만 불러온다.
@@ -394,10 +396,18 @@ export default async function ClassDetailPage({
           <summary className="cursor-pointer text-sm font-medium text-slate-600">
             🔀 반 담임 인수인계
           </summary>
-          <p className="mt-2 text-xs text-slate-500">
-            담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의
-            학생·과제·기록 전체가 그대로 넘어갑니다.
-          </p>
+          {isAdmin ? (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              🏛️ <b>운영자 권한</b>이라 상대 선생님의 수락 없이{" "}
+              <b>바로 옮겨집니다.</b> 담임 변경일이 오늘이면 지금, 미래면 그날
+              자동으로 넘어가고, 두 선생님께 슬랙으로 알려 드려요.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">
+              담임이 바뀔 때 사용해요. 상대 선생님이 수락하면 이 반의
+              학생·과제·기록 전체가 그대로 넘어갑니다.
+            </p>
+          )}
           <form action={requestClassTransfer} className="mt-3 space-y-2">
             <input type="hidden" name="classId" value={classId} />
             <input type="hidden" name="direction" value="give" />
@@ -442,12 +452,23 @@ export default async function ClassDetailPage({
                   className="rounded border border-slate-300 px-2 py-1"
                 />
               </label>
-              <SubmitButton
-                pendingText="요청 중…"
-                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-              >
-                인수인계 요청
-              </SubmitButton>
+              {isAdmin ? (
+                <ConfirmSubmitButton
+                  message={
+                    "상대 선생님의 수락 없이 이 반을 넘길까요?\n\n학생·과제·제출 기록·쿠폰이 모두 함께 넘어갑니다."
+                  }
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  바로 넘기기
+                </ConfirmSubmitButton>
+              ) : (
+                <SubmitButton
+                  pendingText="요청 중…"
+                  className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                >
+                  인수인계 요청
+                </SubmitButton>
+              )}
             </div>
             <p className="text-[11px] text-slate-400">
               공동 관리 시작일을 넣으면 그날부터{" "}

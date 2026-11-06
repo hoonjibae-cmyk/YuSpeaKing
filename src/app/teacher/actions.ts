@@ -388,9 +388,49 @@ export async function moveStudent(formData: FormData) {
   redirect(`${back}&requested=1`);
 }
 
+// 반 담임 인수인계를 실제로 적용한다. 수락했을 때와 운영자가 바로 옮길 때가
+// 같은 길을 타야 공동 관리 기간·예약 이동이 어긋나지 않는다.
+//  · 공동 관리 시작일이 있으면 그 기간 동안 새 담임에게 전체 권한을 준다
+//  · 담임 변경일이 오늘 이전이면 지금 옮기고, 미래면 그날 크론이 옮긴다
+async function applyClassHandover(opts: {
+  classId: string;
+  toTeacherId: string;
+  coteachStart: string | null;
+  effective: string;
+}): Promise<{ dueNow: boolean }> {
+  const admin = createAdminClient();
+  const dueNow = opts.effective <= todayKST();
+
+  if (opts.coteachStart) {
+    await admin.from("class_coteachers").upsert(
+      {
+        class_id: opts.classId,
+        teacher_id: opts.toTeacherId,
+        role: "full",
+        starts_on: opts.coteachStart,
+        ends_on: opts.effective,
+      },
+      { onConflict: "class_id,teacher_id" },
+    );
+  }
+  if (dueNow) {
+    await admin
+      .from("classes")
+      .update({ teacher_id: opts.toTeacherId })
+      .eq("id", opts.classId);
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", opts.classId)
+      .eq("role", "full");
+  }
+  return { dueNow };
+}
+
 // 반 담임 인수인계 요청. direction: 'give'(내 반을 넘김) | 'take'(남의 반을 받음)
+// 운영자가 하면 요청·수락 없이 바로 옮긴다.
 export async function requestClassTransfer(formData: FormData) {
-  const { effectiveId } = await getTeacherContext();
+  const { effectiveId, role } = await getTeacherContext();
   const classId = String(formData.get("classId") || "");
   const otherTeacherId = String(formData.get("teacherId") || "");
   const direction = String(formData.get("direction") || "give");
@@ -429,6 +469,100 @@ export async function requestClassTransfer(formData: FormData) {
   if (coteachStart && coteachStart > effectiveDate) {
     redirect(
       `${back}?error=${encodeURIComponent("공동 관리 시작일은 담임 변경일보다 앞서야 해요")}`,
+    );
+  }
+
+  // ── 운영자: 요청·수락 단계를 건너뛰고 바로 옮긴다 ──
+  // 운영자가 대행 중이어도 실제 로그인한 사람이 운영자면 여기로 온다.
+  if (role === "admin") {
+    // 이 반에 걸려 있던 요청(대기·예약)은 운영자 결정으로 대신한다.
+    // 그대로 두면 한 반에 열린 요청은 하나뿐이라는 제약에 걸려 저장이 안 된다.
+    await admin
+      .from("transfer_requests")
+      .update({ status: "canceled", resolved_at: new Date().toISOString() })
+      .eq("kind", "class")
+      .eq("class_id", classId)
+      .is("applied_at", null)
+      .in("status", ["pending", "accepted"]);
+    // 취소된 인수인계가 줬던 공동 관리 권한도 거둔다. 한 반에 열린 인수인계는
+    // 하나뿐이라 이 반의 'full' 권한은 그 건이 준 것이다. 그대로 두면 예전
+    // 받을 사람이 새 담임 변경일까지 반을 계속 관리할 수 있다.
+    // (보조강사 role='coupon' 은 담임과 무관하므로 건드리지 않는다)
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", classId)
+      .eq("role", "full");
+
+    // 기록을 먼저 남기고 옮긴다. 옮기는 도중 실패해도 '수락됨·미적용' 기록이
+    // 남아 있으므로 매일 도는 예약 이동(applyDueTransfers)이 이어서 처리한다.
+    // (반대로 하면 반은 옮겨졌는데 기록이 없는 상태가 생길 수 있다)
+    const now = new Date().toISOString();
+    const { data: rec, error: adminErr } = await admin
+      .from("transfer_requests")
+      .insert({
+        kind: "class",
+        class_id: classId,
+        from_teacher_id: fromTeacher,
+        to_teacher_id: toTeacher,
+        requested_by: effectiveId,
+        effective_date: effectiveDate,
+        coteach_start: coteachStart,
+        status: "accepted",
+        resolved_at: now,
+      })
+      .select("id")
+      .single();
+    if (adminErr || !rec) {
+      redirect(
+        `${back}?error=${encodeURIComponent(adminErr?.message || "이동에 실패했어요")}`,
+      );
+    }
+
+    const { dueNow } = await applyClassHandover({
+      classId,
+      toTeacherId: toTeacher,
+      coteachStart,
+      effective: effectiveDate,
+    });
+    // 미래 날짜면 applied_at 을 비워 두어 그날 크론이 담임을 바꾼다
+    if (dueNow) {
+      await admin
+        .from("transfer_requests")
+        .update({ applied_at: new Date().toISOString() })
+        .eq("id", rec.id);
+    }
+
+    // 두 선생님 모두에게 알린다 (운영자가 처리했으니 둘 다 모르는 상태다)
+    const [fromC, toC] = await Promise.all([
+      teacherContact(fromTeacher),
+      teacherContact(toTeacher),
+    ]);
+    const msg =
+      `🔀 유스피킹앱 반 담임 변경 (운영자 처리)\n` +
+      `• 반: ${klass.name}\n` +
+      `• ${fromC?.name ?? "이전 담임"} → ${toC?.name ?? "새 담임"}\n` +
+      (coteachStart
+        ? `• 공동 관리: ${coteachStart} ~ ${effectiveDate}\n`
+        : "") +
+      (dueNow
+        ? `• 지금 옮겼습니다.`
+        : `• ${effectiveDate}에 자동으로 옮겨집니다.`);
+    await Promise.all([
+      notifyTeacherById(fromTeacher, msg),
+      notifyTeacherById(toTeacher, msg),
+    ]);
+
+    revalidatePath("/teacher");
+    revalidatePath("/teacher/transfers");
+    revalidatePath(`/teacher/classes/${classId}`);
+    // 넘긴 반은 더 이상 내 반이 아니므로 반 화면 대신 목록으로 돌아간다
+    redirect(
+      `/teacher/transfers?moved=${encodeURIComponent(
+        dueNow
+          ? `${klass.name} 반을 옮겼어요`
+          : `${klass.name} 반이 ${effectiveDate}에 옮겨집니다`,
+      )}`,
     );
   }
 
@@ -524,32 +658,13 @@ export async function acceptTransfer(formData: FormData) {
       update.applied_at = new Date().toISOString();
     }
   } else {
-    // 공동 관리 기간이 있으면 새 담임에게 기간 한정 권한을 준다
-    const coStart = reqRow.coteach_start as string | null;
-    if (coStart) {
-      await admin.from("class_coteachers").upsert(
-        {
-          class_id: reqRow.class_id,
-          teacher_id: reqRow.to_teacher_id,
-          role: "full",
-          starts_on: coStart,
-          ends_on: effective,
-        },
-        { onConflict: "class_id,teacher_id" },
-      );
-    }
-    if (dueNow) {
-      await admin
-        .from("classes")
-        .update({ teacher_id: reqRow.to_teacher_id })
-        .eq("id", reqRow.class_id);
-      await admin
-        .from("class_coteachers")
-        .delete()
-        .eq("class_id", reqRow.class_id)
-        .eq("role", "full");
-      update.applied_at = new Date().toISOString();
-    }
+    await applyClassHandover({
+      classId: reqRow.class_id as string,
+      toTeacherId: reqRow.to_teacher_id as string,
+      coteachStart: (reqRow.coteach_start as string | null) ?? null,
+      effective,
+    });
+    if (dueNow) update.applied_at = new Date().toISOString();
   }
 
   await admin.from("transfer_requests").update(update).eq("id", requestId);

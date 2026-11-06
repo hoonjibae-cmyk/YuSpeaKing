@@ -1,3 +1,3 @@
 // 프로그램 버전. 기능 변경 시 여기서 올린다.
-export const APP_VERSION = "1.47.0";
-export const APP_VERSION_DATE = "2026-11-05";
+export const APP_VERSION = "1.48.0";
+export const APP_VERSION_DATE = "2026-11-06";

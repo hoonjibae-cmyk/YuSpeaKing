@@ -26,8 +26,8 @@ YuSpeaKing 관리자가 반을 한 번 연결하면, 매일 새벽 또는 담당
 - 필터를 주지 않으면 예전과 같이 전체를 줍니다 (다른 연동에 영향 없음).
 - 형식이 틀린 필터는 400 입니다.
 
-Student Card 쪽 변경은 `docs/student-card-grade-filter.patch` 에 있습니다 (Student Card 저장소에서
-`git am` 으로 적용).
+Student Card **v1.122.0** 부터 지원합니다 (`server/routes/yuspeaking.js`). 그 전 버전은 필터를
+모르고 전체 명단을 주므로, 유스피킹 운영자 화면에 '초6 필터 미적용' 경고가 뜹니다.
 
 ## 유스피킹이 하는 일
 

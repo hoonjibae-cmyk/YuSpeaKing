@@ -8,7 +8,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
 import { resolveNoticeAudience } from "@/lib/notices";
 import { sendPushToStudents } from "@/lib/push";
-import { moveStudentToClass } from "@/lib/transfers";
+import { applyClassHandover, moveStudentToClass } from "@/lib/transfers";
+import { generateClassCode } from "@/lib/class-code";
+import { getSyncMode } from "@/lib/hr/sync";
 import { todayKST } from "@/lib/date";
 import { synthesizeSpeech } from "@/lib/ai/tts";
 import { normalizeVoice } from "@/lib/tts-voices";
@@ -19,7 +21,13 @@ import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
 import { canGrantCoupons } from "@/lib/coupon-helpers";
-import { bareLink, normalizePhone, sendAlimtalk } from "@/lib/solapi";
+import {
+  alimtalkConfigured,
+  bareLink,
+  normalizePhone,
+  sendAlimtalk,
+} from "@/lib/solapi";
+import { listUninvited, type Uninvited } from "@/lib/invites";
 import { hrConfigured } from "@/lib/hr/client";
 import { syncAll, type SyncReport } from "@/lib/hr/sync";
 
@@ -53,6 +61,15 @@ async function generateAndStoreSamples(
     .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl })
     .eq("id", assignmentId);
 }
+
+// Student Card 일원화 중에는 반·학생을 Student Card 에서만 받는다.
+// 선생님이 직접 만들면 Student Card 와 어긋난 반·학생이 섞여 같은 학생이 두 번
+// 생기거나 동기화가 엉뚱한 반을 건드린다. 운영자는 정리를 위해 예외로 둔다.
+async function blockedByCardSync(role: string): Promise<boolean> {
+  return role !== "admin" && (await getSyncMode()) === "oneway";
+}
+const CARD_ONLY =
+  "반과 학생은 Student Card 에서 들어옵니다. 바꿀 것이 있으면 Student Card 에서 고쳐 주세요";
 
 // ---------- 인증 ----------
 
@@ -160,17 +177,11 @@ export async function stopImpersonating() {
 
 // ---------- 반 ----------
 
-function generateClassCode(): string {
-  // 헷갈리는 글자(0/O, 1/I) 제외한 6자리 코드
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = randomBytes(6);
-  let code = "";
-  for (let i = 0; i < 6; i++) code += alphabet[bytes[i] % alphabet.length];
-  return code;
-}
-
 export async function createClass(formData: FormData) {
-  const { db, effectiveId } = await getTeacherContext();
+  const { db, effectiveId, role } = await getTeacherContext();
+  if (await blockedByCardSync(role)) {
+    redirect(`/teacher?error=${encodeURIComponent(CARD_ONLY)}`);
+  }
   const name = String(formData.get("name") || "").trim();
   if (!name) redirect("/teacher?error=반+이름을+입력하세요");
 
@@ -386,45 +397,6 @@ export async function moveStudent(formData: FormData) {
 
   revalidatePath(back);
   redirect(`${back}&requested=1`);
-}
-
-// 반 담임 인수인계를 실제로 적용한다. 수락했을 때와 운영자가 바로 옮길 때가
-// 같은 길을 타야 공동 관리 기간·예약 이동이 어긋나지 않는다.
-//  · 공동 관리 시작일이 있으면 그 기간 동안 새 담임에게 전체 권한을 준다
-//  · 담임 변경일이 오늘 이전이면 지금 옮기고, 미래면 그날 크론이 옮긴다
-async function applyClassHandover(opts: {
-  classId: string;
-  toTeacherId: string;
-  coteachStart: string | null;
-  effective: string;
-}): Promise<{ dueNow: boolean }> {
-  const admin = createAdminClient();
-  const dueNow = opts.effective <= todayKST();
-
-  if (opts.coteachStart) {
-    await admin.from("class_coteachers").upsert(
-      {
-        class_id: opts.classId,
-        teacher_id: opts.toTeacherId,
-        role: "full",
-        starts_on: opts.coteachStart,
-        ends_on: opts.effective,
-      },
-      { onConflict: "class_id,teacher_id" },
-    );
-  }
-  if (dueNow) {
-    await admin
-      .from("classes")
-      .update({ teacher_id: opts.toTeacherId })
-      .eq("id", opts.classId);
-    await admin
-      .from("class_coteachers")
-      .delete()
-      .eq("class_id", opts.classId)
-      .eq("role", "full");
-  }
-  return { dueNow };
 }
 
 // 반 담임 인수인계 요청. direction: 'give'(내 반을 넘김) | 'take'(남의 반을 받음)
@@ -982,7 +954,12 @@ export async function setCouponHelper(formData: FormData) {
 // ---------- 학생 ----------
 
 export async function addStudent(formData: FormData) {
-  const { db } = await getTeacherContext();
+  const { db, role } = await getTeacherContext();
+  if (await blockedByCardSync(role)) {
+    redirect(
+      `/teacher/classes/${String(formData.get("classId") || "")}?error=${encodeURIComponent(CARD_ONLY)}`,
+    );
+  }
   const classId = String(formData.get("classId") || "");
   const name = String(formData.get("name") || "").trim();
   const number = parseInt(String(formData.get("number") || ""), 10);
@@ -1002,7 +979,12 @@ export async function addStudent(formData: FormData) {
 
 // 여러 학생 일괄 등록 (엑셀/CSV 붙여넣기: 한 줄에 "번호,이름" 또는 "번호[탭]이름")
 export async function bulkAddStudents(formData: FormData) {
-  const { db } = await getTeacherContext();
+  const { db, role } = await getTeacherContext();
+  if (await blockedByCardSync(role)) {
+    redirect(
+      `/teacher/classes/${String(formData.get("classId") || "")}?error=${encodeURIComponent(CARD_ONLY)}`,
+    );
+  }
   const classId = String(formData.get("classId") || "");
   const raw = String(formData.get("roster") || "");
   if (!classId || !raw.trim()) redirect(`/teacher/classes/${classId}`);
@@ -1067,7 +1049,12 @@ export async function resetStudentPin(formData: FormData) {
 
 // 가입 신청 승인: 정보(이름·학교·학년·수강반) 수정 반영 + 대상 반 다음 번호 부여
 export async function approveStudent(formData: FormData) {
-  const { db } = await getTeacherContext();
+  const { db, role } = await getTeacherContext();
+  if (await blockedByCardSync(role)) {
+    redirect(
+      `/teacher/classes/${String(formData.get("classId") || "")}?error=${encodeURIComponent(CARD_ONLY)}`,
+    );
+  }
   const classId = String(formData.get("classId") || ""); // 현재 페이지 반(재검증용)
   const studentId = String(formData.get("studentId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -1114,7 +1101,12 @@ export async function approveStudent(formData: FormData) {
 
 // 가입 신청 반려
 export async function rejectStudent(formData: FormData) {
-  const { db } = await getTeacherContext();
+  const { db, role } = await getTeacherContext();
+  if (await blockedByCardSync(role)) {
+    redirect(
+      `/teacher/classes/${String(formData.get("classId") || "")}?error=${encodeURIComponent(CARD_ONLY)}`,
+    );
+  }
   const classId = String(formData.get("classId") || "");
   const studentId = String(formData.get("studentId") || "");
   await db.from("students").update({ status: "rejected" }).eq("id", studentId);
@@ -1771,4 +1763,128 @@ export async function dismissPendingStudent(formData: FormData) {
   await admin.from("hr_pending_students").delete().eq("id", pendingId);
   revalidatePath("/teacher/roster");
   revalidatePath("/teacher");
+}
+
+// ---------- 가입 안내 알림톡 ----------
+
+// 가입하지 않은 학생에게 가입 안내를 보낸다 (학부모 번호 우선, 없으면 학생 번호).
+//  · 가입 전(invited) 학생: 개인 가입 링크 — 누르면 바로 아이디를 만든다
+//  · 전환 중이라 아직 유스피킹에 없는 학생: 담임 선생님의 가입 신청 링크
+export async function sendSignupInvites(formData: FormData) {
+  const { effectiveId, role } = await getTeacherContext();
+  const back = "/teacher/roster";
+  const keys = formData.getAll("keys").map(String).filter(Boolean);
+  if (keys.length === 0) {
+    redirect(
+      `${back}?error=${encodeURIComponent("보낼 학생을 선택해 주세요")}`,
+    );
+  }
+  if (!alimtalkConfigured("invite")) {
+    redirect(
+      `${back}?error=${encodeURIComponent(
+        "가입 안내 알림톡이 아직 설정되지 않았어요 (SOLAPI_INVITE_TEMPLATE_ID). 운영자에게 문의해 주세요.",
+      )}`,
+    );
+  }
+
+  const admin = createAdminClient();
+  // 내 반만 (운영자는 대행 중인 선생님의 반)
+  const { data: classRows } = await admin
+    .from("classes")
+    .select("id, name, teacher_id")
+    .eq("teacher_id", effectiveId)
+    .is("archived_at", null);
+  const myClasses = (classRows ?? []) as {
+    id: string;
+    name: string;
+    teacher_id: string;
+  }[];
+  const all = await listUninvited(myClasses);
+  const picked = all.filter((r) => keys.includes(r.key));
+
+  const origin = appOrigin();
+  if (!/^https?:\/\/[^/]+/i.test(origin)) {
+    redirect(
+      `${back}?error=${encodeURIComponent(
+        "가입 링크 주소를 만들 수 없어요. 운영자에게 NEXT_PUBLIC_APP_URL 설정을 문의해 주세요.",
+      )}`,
+    );
+  }
+
+  // 전환 중 학생에게 줄 공용 가입 링크 (일원화 중에는 공용 가입이 막혀 있다)
+  const oneway = (await getSyncMode()) === "oneway";
+  const { data: me } = await admin
+    .from("teachers")
+    .select("signup_code")
+    .eq("id", effectiveId)
+    .maybeSingle();
+  const signupCode =
+    (me as { signup_code?: string | null } | null)?.signup_code ?? null;
+
+  const targets: { to: string; variables: Record<string, string> }[] = [];
+  const sentKeys: Uninvited[] = [];
+  const skipped: string[] = [];
+  for (const r of picked) {
+    if (!r.phone) {
+      skipped.push(`${r.name}(번호 없음)`);
+      continue;
+    }
+    let link: string | null = null;
+    if (r.kind === "invited" && r.token)
+      link = `${origin}/student/join/${r.token}`;
+    else if (r.kind === "card" && !oneway && signupCode)
+      link = `${origin}/student/signup?t=${encodeURIComponent(signupCode)}`;
+    if (!link) {
+      skipped.push(`${r.name}(링크 없음)`);
+      continue;
+    }
+    targets.push({
+      to: r.phone,
+      variables: {
+        "#{이름}": r.name,
+        "#{반}": r.className,
+        // 템플릿 버튼에 https:// 가 고정되어 있다 (월말 리포트와 같은 규칙)
+        "#{링크}": bareLink(link),
+      },
+    });
+    sentKeys.push(r);
+  }
+
+  if (targets.length === 0) {
+    redirect(
+      `${back}?error=${encodeURIComponent(`보낼 수 있는 학생이 없어요. ${skipped.join(", ")}`)}`,
+    );
+  }
+
+  const result = await sendAlimtalk(targets, "invite");
+
+  if (result.sent > 0) {
+    const failedTo = new Set((result.failures ?? []).map((f) => f.to));
+    const now = new Date().toISOString();
+    for (const r of sentKeys) {
+      if (!r.hrStudentId || failedTo.has(r.phone!)) continue;
+      await admin.from("signup_invites").upsert(
+        {
+          hr_student_id: r.hrStudentId,
+          sent_at: now,
+          sent_to: r.phone,
+          sent_count: r.sentCount + 1,
+        },
+        { onConflict: "hr_student_id" },
+      );
+    }
+    await admin.from("hr_sync_log").insert({
+      kind: "invite_sent",
+      detail: `가입 안내 ${result.sent}명 (${role === "admin" ? "운영자" : "선생님"})`,
+    });
+  }
+
+  const parts = [`${result.sent}명에게 가입 안내를 보냈어요`];
+  if (result.failed) parts.push(`${result.failed}명 실패`);
+  if (skipped.length) parts.push(`제외: ${skipped.join(", ")}`);
+  if (result.error) parts.push(result.error);
+  revalidatePath(back);
+  redirect(
+    `${back}?${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`,
+  );
 }

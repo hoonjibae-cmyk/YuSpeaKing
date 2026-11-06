@@ -1,0 +1,159 @@
+From ef8a68da4bc3d57bc6854590d42b8530fd837d71 Mon Sep 17 00:00:00 2001
+From: hoonjibae-cmyk <hoonjibae@gmail.com>
+Date: Fri, 6 Nov 2026 12:45:40 +0000
+Subject: [PATCH] =?UTF-8?q?=EC=9C=A0=EC=8A=A4=ED=94=BC=ED=82=B9=20?=
+ =?UTF-8?q?=EC=97=B0=EB=8F=99:=20=ED=95=99=EB=85=84=20=ED=95=84=ED=84=B0(?=
+ =?UTF-8?q?=3FschoolLevel=3D=EC=B4=88=EB=93=B1&grade=3D6)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+유스피킹은 초6만 운영하는데 연동 엔드포인트가 전 학년 재원생을 내보내고 있었다.
+학년 필터를 주면 그 학년 재원생만, 반도 그 학년 학생이 있는 반만 내보낸다.
+적용한 필터를 응답에 되돌려 주어 유스피킹이 걸러진 명단인지 확인할 수 있게 한다.
+
+필터를 주지 않으면 예전과 똑같이 동작한다 (공용 getVocaRoster 는 건드리지 않음).
+형식이 틀린 필터는 400 — 조용히 전체 명단을 주지 않는다.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013tm7MpucwZchGJTcygRVVF
+---
+ server/routes/yuspeaking.js        | 45 +++++++++++++++++++++++++++---
+ test/yuspeakingIntegration.test.js | 35 +++++++++++++++++++++++
+ 2 files changed, 76 insertions(+), 4 deletions(-)
+
+diff --git a/server/routes/yuspeaking.js b/server/routes/yuspeaking.js
+index 3f2640c..a6f96ac 100644
+--- a/server/routes/yuspeaking.js
++++ b/server/routes/yuspeaking.js
+@@ -3,9 +3,38 @@ import config from '../config.js';
+ import { safeEqual } from '../lib/auth.js';
+ import { getVocaRoster } from '../lib/vocaRoster.js';
+ import { findActiveNotificationContactsByIds } from '../lib/students.js';
++import { db } from '../db.js';
+ 
+ const router = express.Router();
+ const CLASS_ID = /^(?:aca:\d+|legacy:[a-f0-9]{64})$/;
++const SCHOOL_LEVELS = new Set(['초등', '중등', '고등']);
++
++// 유스피킹은 학년 단위로 운영한다 (지금은 초6). 다른 학년 학생은 애초에 내보내지
++// 않도록 ?schoolLevel=초등&grade=6 을 받는다. 값을 주지 않으면 예전과 똑같이 전체.
++// 응답에 적용한 필터를 되돌려 주어, 유스피킹이 '걸러진 명단' 인지 확인할 수 있게 한다.
++function parseGradeFilter(query) {
++  const schoolLevel = String(query.schoolLevel || '').trim();
++  const gradeText = String(query.grade || '').trim();
++  if (!schoolLevel && !gradeText) return { filter: null };
++  const grade = Number(gradeText);
++  if (!SCHOOL_LEVELS.has(schoolLevel) || !Number.isInteger(grade) || grade < 1 || grade > 6) {
++    return { error: '학년 필터 형식이 올바르지 않습니다.' };
++  }
++  return { filter: { schoolLevel, grade } };
++}
++
++async function filterRosterByGrade(roster, filter) {
++  if (!filter) return roster.classes;
++  const rows = await db.all(
++    `SELECT id FROM student_card.students
++      WHERE status = '재원' AND school_level = $1 AND grade = $2`,
++    [filter.schoolLevel, filter.grade],
++  );
++  const allowed = new Set(rows.map((row) => String(row.id)));
++  return roster.classes
++    .map((klass) => ({ ...klass, students: klass.students.filter((s) => allowed.has(s.externalId)) }))
++    .filter((klass) => klass.students.length > 0);
++}
+ 
+ function requireYuSpeakingKey(req, res, next) {
+   if (!config.yuspeakingRosterKey || config.yuspeakingRosterKey.length < 32) {
+@@ -18,12 +47,16 @@ function requireYuSpeakingKey(req, res, next) {
+   return next();
+ }
+ 
+-router.get('/classes', requireYuSpeakingKey, async (_req, res, next) => {
++router.get('/classes', requireYuSpeakingKey, async (req, res, next) => {
+   try {
++    const { filter, error } = parseGradeFilter(req.query);
++    if (error) return res.status(400).json({ error });
+     const roster = await getVocaRoster();
++    const classes = await filterRosterByGrade(roster, filter);
+     return res.json({
+       ok: true, version: 1, complete: true, generatedAt: roster.generatedAt,
+-      classes: roster.classes.map(({ externalId, name, teacherName, teacherConflict, students }) => ({
++      ...(filter ? { filter } : {}),
++      classes: classes.map(({ externalId, name, teacherName, teacherConflict, students }) => ({
+         id: externalId, name, teacherName, teacherConflict, studentCount: students.length,
+       })),
+     });
+@@ -36,8 +69,11 @@ router.get('/classes/:classId/students', requireYuSpeakingKey, async (req, res,
+   try {
+     const classId = String(req.params.classId || '');
+     if (!CLASS_ID.test(classId)) return res.status(400).json({ error: '반 ID 형식이 올바르지 않습니다.' });
++    const { filter, error } = parseGradeFilter(req.query);
++    if (error) return res.status(400).json({ error });
+     const roster = await getVocaRoster();
+-    const klass = roster.classes.find((item) => item.externalId === classId);
++    const classes = await filterRosterByGrade(roster, filter);
++    const klass = classes.find((item) => item.externalId === classId);
+     if (!klass) return res.status(404).json({ error: '현재 재원생이 있는 반을 찾지 못했습니다.' });
+ 
+     const contacts = await findActiveNotificationContactsByIds(
+@@ -46,6 +82,7 @@ router.get('/classes/:classId/students', requireYuSpeakingKey, async (req, res,
+     const byId = new Map(contacts.map((contact) => [String(contact.id), contact]));
+     return res.json({
+       ok: true, version: 1, complete: true, generatedAt: roster.generatedAt,
++      ...(filter ? { filter } : {}),
+       classId,
+       students: klass.students.map((student) => {
+         const contact = byId.get(student.externalId);
+@@ -63,4 +100,4 @@ router.get('/classes/:classId/students', requireYuSpeakingKey, async (req, res,
+ });
+ 
+ export default router;
+-
++
+diff --git a/test/yuspeakingIntegration.test.js b/test/yuspeakingIntegration.test.js
+index 354cf78..37622d4 100644
+--- a/test/yuspeakingIntegration.test.js
++++ b/test/yuspeakingIntegration.test.js
+@@ -65,3 +65,38 @@ test('유스피킹 전용 키에만 재원 반과 학생 연락처를 제공한
+   assert.equal((await fetch(`${classesPath}/bad%20id/students`, { headers })).status, 400);
+ });
+ 
++
++test('학년 필터를 주면 그 학년 재원생만, 반도 그 학년이 있는 반만 내보낸다', async () => {
++  await db.run(`INSERT INTO student_card.students
++    (student_key, name, class_name, school_level, grade, student_phone, parent_phone, status)
++    VALUES ($1, $2, $3, '초등', 6, '010-1212-3434', '010-5656-7878', '재원'),
++           ($4, $5, $3, '중등', 1, '010-9090-8080', '010-7070-6060', '재원'),
++           ($6, $7, $8, '중등', 2, '010-1000-2000', '010-3000-4000', '재원')`,
++  ['grade-e6', '초육학생', '혼합반', 'grade-m1', '중일학생', 'grade-m2', '중이학생', '중등전용반']);
++
++  const headers = { 'x-yuspeaking-roster-key': process.env.YUSPEAKING_ROSTER_KEY };
++  const classesPath = `${base}/api/integrations/yuspeaking/classes`;
++  const q = `?schoolLevel=${encodeURIComponent('초등')}&grade=6`;
++
++  const classes = await (await fetch(classesPath + q, { headers })).json();
++  assert.deepEqual(classes.filter, { schoolLevel: '초등', grade: 6 });
++  const mixed = classes.classes.find((item) => item.name === '혼합반');
++  assert.ok(mixed);
++  assert.equal(mixed.studentCount, 1, '혼합반에서 초6 한 명만 센다');
++  assert.equal(classes.classes.some((item) => item.name === '중등전용반'), false, '초6 이 없는 반은 빠진다');
++
++  const students = await (await fetch(
++    `${classesPath}/${encodeURIComponent(mixed.id)}/students${q}`, { headers },
++  )).json();
++  assert.deepEqual(students.students.map((s) => s.name), ['초육학생']);
++
++  // 필터를 주지 않으면 예전과 같다 (다른 연동이 깨지지 않도록)
++  const all = await (await fetch(classesPath, { headers })).json();
++  assert.equal(all.filter, undefined);
++  assert.equal(all.classes.find((item) => item.name === '혼합반').studentCount, 2);
++  assert.ok(all.classes.some((item) => item.name === '중등전용반'));
++
++  // 형식이 틀린 필터는 400 — 조용히 전체를 주지 않는다
++  assert.equal((await fetch(`${classesPath}?schoolLevel=x&grade=6`, { headers })).status, 400);
++  assert.equal((await fetch(`${classesPath}?schoolLevel=${encodeURIComponent('초등')}&grade=9`, { headers })).status, 400);
++});
+-- 
+2.43.0
+

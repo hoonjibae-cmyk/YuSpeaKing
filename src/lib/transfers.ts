@@ -12,11 +12,16 @@ export async function nextNumberInClass(classId: string): Promise<number> {
     .not("number", "is", null)
     .order("number", { ascending: false })
     .limit(1);
-  return Number((data?.[0] as { number?: number } | undefined)?.number ?? 0) + 1;
+  return (
+    Number((data?.[0] as { number?: number } | undefined)?.number ?? 0) + 1
+  );
 }
 
 // 학생을 다른 반으로 이동 (계정·제출·점수·쿠폰·배지는 student_id 에 묶여 그대로 따라간다)
-export async function moveStudentToClass(studentId: string, targetClassId: string) {
+export async function moveStudentToClass(
+  studentId: string,
+  targetClassId: string,
+) {
   const admin = createAdminClient();
   const number = await nextNumberInClass(targetClassId);
   await admin
@@ -90,4 +95,43 @@ export async function applyDueTransfers(): Promise<number> {
     }
   }
   return due.length;
+}
+
+// 반 담임 인수인계를 실제로 적용한다. 수락했을 때와 운영자가 바로 옮길 때가
+// 같은 길을 타야 공동 관리 기간·예약 이동이 어긋나지 않는다.
+//  · 공동 관리 시작일이 있으면 그 기간 동안 새 담임에게 전체 권한을 준다
+//  · 담임 변경일이 오늘 이전이면 지금 옮기고, 미래면 그날 크론이 옮긴다
+export async function applyClassHandover(opts: {
+  classId: string;
+  toTeacherId: string;
+  coteachStart: string | null;
+  effective: string;
+}): Promise<{ dueNow: boolean }> {
+  const admin = createAdminClient();
+  const dueNow = opts.effective <= todayKST();
+
+  if (opts.coteachStart) {
+    await admin.from("class_coteachers").upsert(
+      {
+        class_id: opts.classId,
+        teacher_id: opts.toTeacherId,
+        role: "full",
+        starts_on: opts.coteachStart,
+        ends_on: opts.effective,
+      },
+      { onConflict: "class_id,teacher_id" },
+    );
+  }
+  if (dueNow) {
+    await admin
+      .from("classes")
+      .update({ teacher_id: opts.toTeacherId })
+      .eq("id", opts.classId);
+    await admin
+      .from("class_coteachers")
+      .delete()
+      .eq("class_id", opts.classId)
+      .eq("role", "full");
+  }
+  return { dueNow };
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hrConfigured } from "@/lib/hr/client";
-import { syncAll } from "@/lib/hr/sync";
+import { runFullSync } from "@/lib/hr/sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,16 +27,24 @@ export async function GET(req: Request) {
   }
 
   try {
-    const reports = await syncAll();
-    const failed = reports.filter((r) => r.error);
+    // 전환 상태면 맞추기만, 일원화 상태면 Student Card 를 따라 만들고 옮긴다
+    const s = await runFullSync();
     return NextResponse.json({
-      classes: reports.length,
-      updated: reports.reduce((n, r) => n + r.updated, 0),
-      pending: reports.reduce(
-        (n, r) => n + r.pendingNew + r.pendingAmbiguous,
-        0,
-      ),
-      failed: failed.map((r) => ({ class: r.className, error: r.error })),
+      mode: s.mode,
+      filterApplied: s.filterApplied,
+      classes: s.reports.length,
+      teachersLinked: s.teachersLinked,
+      classesLinked: s.classesLinked,
+      classesCreated: s.classesCreated,
+      ownersChanged: s.ownersChanged,
+      studentsLinked: s.reports.reduce((n, r) => n + r.linked, 0),
+      studentsCreated: s.reports.reduce((n, r) => n + r.created, 0),
+      studentsMoved: s.studentsMoved,
+      studentsWithdrawn: s.studentsWithdrawn,
+      warnings: s.warnings,
+      failed: s.reports
+        .filter((r) => r.error)
+        .map((r) => ({ class: r.className, error: r.error })),
     });
   } catch (e) {
     console.error("[크론] Student Card 명단 동기화 실패:", e);

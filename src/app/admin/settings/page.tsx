@@ -47,7 +47,14 @@ export default async function AdminSettingsPage({
     ["SOLAPI_API_KEY", !!process.env.SOLAPI_API_KEY],
     ["SOLAPI_API_SECRET", !!process.env.SOLAPI_API_SECRET],
     ["SOLAPI_PFID (발신프로필)", !!process.env.SOLAPI_PFID],
-    ["SOLAPI_TEMPLATE_ID (템플릿)", !!process.env.SOLAPI_TEMPLATE_ID],
+    [
+      "SOLAPI_TEMPLATE_ID (월말 리포트 템플릿)",
+      !!process.env.SOLAPI_TEMPLATE_ID,
+    ],
+    [
+      "SOLAPI_INVITE_TEMPLATE_ID (가입 안내 템플릿)",
+      !!process.env.SOLAPI_INVITE_TEMPLATE_ID,
+    ],
     ["SOLAPI_SENDER (발신번호·문자 대체용)", !!process.env.SOLAPI_SENDER],
   ];
 

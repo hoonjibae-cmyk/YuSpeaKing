@@ -52,14 +52,29 @@ export async function GET(req: Request) {
     .select("class_id, name, kind")
     .in(
       "class_id",
-      classes.map((c) => c.id)
+      classes.map((c) => c.id),
     )
     .order("name");
-  const pending = (pendRows ?? []) as {
-    class_id: string;
-    name: string;
-    kind: string;
-  }[];
+  // 일원화 후에는 Student Card 에서 들어와 아직 아이디를 만들지 않은 학생(invited)이
+  // '가입하지 않은 학생' 이다. 전환 중에는 대기 명단(new)이 그 역할을 한다.
+  const { data: invitedRows } = await admin
+    .from("students")
+    .select("class_id, name")
+    .in(
+      "class_id",
+      classes.map((c) => c.id),
+    )
+    .eq("status", "invited")
+    .order("name");
+  const pending = [
+    ...((pendRows ?? []) as { class_id: string; name: string; kind: string }[]),
+    ...((invitedRows ?? []) as { class_id: string; name: string }[]).map(
+      (r) => ({
+        ...r,
+        kind: "new",
+      }),
+    ),
+  ];
   if (pending.length === 0) {
     return NextResponse.json({ ok: true, teachersNotified: 0 });
   }
@@ -81,7 +96,7 @@ export async function GET(req: Request) {
     if (p.kind === "ambiguous") {
       ambiguousByClass.set(
         p.class_id,
-        (ambiguousByClass.get(p.class_id) ?? 0) + 1
+        (ambiguousByClass.get(p.class_id) ?? 0) + 1,
       );
       continue;
     }
@@ -116,9 +131,9 @@ export async function GET(req: Request) {
     const parts =
       newTotal > 0
         ? [
-            `🧾 유스피킹 · 아직 등록되지 않은 학생 ${newTotal}명`,
+            `🧾 유스피킹 · 아직 가입하지 않은 학생 ${newTotal}명`,
             "",
-            "Student Card 명단에는 있는데, 유스피킹에 가입도 가입 신청도 안 된 학생이에요.",
+            "Student Card 명단에는 있는데, 아직 유스피킹에 가입하지 않은 학생이에요. 명단 확인에서 가입 안내 알림톡을 보낼 수 있어요.",
             "",
             ...lines,
           ]
@@ -126,7 +141,7 @@ export async function GET(req: Request) {
     if (ambiguousTotal > 0) {
       parts.push(
         "",
-        `⚠️ 이름이 같은 학생이 여럿이라 직접 확인이 필요한 건 ${ambiguousTotal}명 있어요.`
+        `⚠️ 이름이 같은 학생이 여럿이라 직접 확인이 필요한 건 ${ambiguousTotal}명 있어요.`,
       );
     }
     parts.push("", `👉 명단 확인: ${origin}/teacher/roster`);

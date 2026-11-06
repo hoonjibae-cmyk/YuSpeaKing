@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { studentSignup } from "../actions";
 import SubmitButton from "@/components/SubmitButton";
 import { Logo } from "@/components/Logo";
+import { getSyncMode } from "@/lib/hr/sync";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,37 @@ export default async function StudentSignupPage({
 }) {
   const code = String(searchParams.t || "").trim();
   const admin = createAdminClient();
+
+  // Student Card 일원화: 학생은 Student Card 에서 들어오고, 알림톡으로 받은 개인
+  // 가입 링크로만 계정을 만든다. 공용 가입 링크로 새 학생이 생기면 Student Card 와
+  // 어긋난 학생이 섞이므로 막는다.
+  if ((await getSyncMode()) === "oneway") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-12">
+        <Link href="/" className="mb-6 flex flex-col items-center gap-2">
+          <Logo size="md" />
+          <span className="text-2xl font-bold text-brand">유스피킹</span>
+        </Link>
+        <div className="rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm">
+          <div className="text-3xl">📩</div>
+          <h1 className="mt-2 text-lg font-semibold">
+            가입 안내 링크로 가입해 주세요
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            유스피킹 가입은 학원에서 보내 드린 <b>카카오톡 가입 안내</b>의
+            버튼으로 할 수 있어요. 안내를 받지 못했다면 담당 선생님께 다시 보내
+            달라고 말씀해 주세요.
+          </p>
+          <Link
+            href="/student"
+            className="mt-5 inline-block text-sm text-brand hover:underline"
+          >
+            이미 아이디가 있어요 → 로그인
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   // 선생님별 고유 가입 링크(?t=코드).
   // 승인 여부와 무관하게 먼저 찾아서, 막힌 이유를 구체적으로 안내한다.
@@ -40,7 +72,10 @@ export default async function StudentSignupPage({
           .not("signup_code", "is", null)
           .order("name")
       : { data: null };
-  const pickable = (pickableRaw ?? []) as { name: string | null; signup_code: string }[];
+  const pickable = (pickableRaw ?? []) as {
+    name: string | null;
+    signup_code: string;
+  }[];
 
   const inputCls =
     "w-full rounded-xl border border-slate-300 px-4 py-3 focus:border-brand focus:outline-none";
@@ -131,7 +166,8 @@ export default async function StudentSignupPage({
       <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
         <h1 className="text-center text-lg font-semibold">가입 신청</h1>
         <p className="mt-1 text-center text-sm text-slate-500">
-          <b className="text-brand">{teacher.name} 선생님</b> 반 가입 신청이에요.
+          <b className="text-brand">{teacher.name} 선생님</b> 반 가입
+          신청이에요.
           <br />
           신청하면 선생님 승인 후 이용할 수 있어요.
         </p>
@@ -145,7 +181,12 @@ export default async function StudentSignupPage({
         <form action={studentSignup} className="mt-6 space-y-3">
           <input type="hidden" name="signup_code" value={teacher.signup_code} />
           <input name="name" placeholder="이름" required className={inputCls} />
-          <input name="school" placeholder="학교 (예: 목동초등학교)" required className={inputCls} />
+          <input
+            name="school"
+            placeholder="학교 (예: 목동초등학교)"
+            required
+            className={inputCls}
+          />
 
           <select name="grade" required defaultValue="" className={inputCls}>
             <option value="" disabled>
@@ -212,7 +253,10 @@ export default async function StudentSignupPage({
 
       <p className="mt-4 text-center text-sm text-slate-400">
         이미 승인받았나요?{" "}
-        <Link href="/student" className="font-medium text-brand hover:underline">
+        <Link
+          href="/student"
+          className="font-medium text-brand hover:underline"
+        >
           로그인하기
         </Link>
       </p>

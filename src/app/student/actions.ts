@@ -12,11 +12,14 @@ import {
 import { getActiveStudent } from "@/lib/student-guard";
 import { notifyTeacher } from "@/lib/slack";
 import { appOrigin } from "@/lib/app-url";
+import { getSyncMode } from "@/lib/hr/sync";
 
 const USERNAME_RE = /^[a-zA-Z0-9._]{4,20}$/;
 
 // ---------- 가입 신청 (승인 대기) ----------
 export async function studentSignup(formData: FormData) {
+  // Student Card 일원화 중에는 공용 가입을 받지 않는다 (가입 안내 링크로만)
+  if ((await getSyncMode()) === "oneway") redirect("/student/signup");
   const name = String(formData.get("name") || "").trim();
   const school = String(formData.get("school") || "").trim();
   const grade = String(formData.get("grade") || "").trim();
@@ -60,13 +63,19 @@ export async function studentSignup(formData: FormData) {
     .maybeSingle();
   if (klassErr) {
     console.error("[학생가입] 수강반 조회 실패:", klassErr);
-    redirect(backWithError("수강반 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요"));
+    redirect(
+      backWithError(
+        "수강반 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요",
+      ),
+    );
   }
   if (!klass) {
     redirect(backWithError("수강반을 선택해 주세요"));
   }
   if (klass.archived_at) {
-    redirect(backWithError("보관된 반은 신청할 수 없어요. 선생님께 문의해 주세요"));
+    redirect(
+      backWithError("보관된 반은 신청할 수 없어요. 선생님께 문의해 주세요"),
+    );
   }
 
   // 가입 링크(선생님)와 선택한 반의 담당 선생님이 일치하는지 확인
@@ -113,7 +122,7 @@ export async function studentSignup(formData: FormData) {
       `• 이름: ${name} (${school} ${grade})\n` +
       `• 수강반: ${klass.name}\n` +
       `• 아이디: ${username}\n` +
-      `👉 승인하러 가기: ${approveUrl}`
+      `👉 승인하러 가기: ${approveUrl}`,
   );
 
   redirect(`/student?signup=done`);
@@ -127,7 +136,9 @@ export async function studentLogin(formData: FormData) {
   const password = String(formData.get("password") || "");
 
   if (!username || !password) {
-    redirect("/student?error=" + encodeURIComponent("아이디와 비밀번호를 입력하세요"));
+    redirect(
+      "/student?error=" + encodeURIComponent("아이디와 비밀번호를 입력하세요"),
+    );
   }
 
   const admin = createAdminClient();
@@ -138,21 +149,37 @@ export async function studentLogin(formData: FormData) {
     .maybeSingle();
 
   if (!student || !student.password_hash) {
-    redirect("/student?error=" + encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"));
+    redirect(
+      "/student?error=" +
+        encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"),
+    );
   }
   if (!verifyPassword(password, student.password_hash)) {
-    redirect("/student?error=" + encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"));
+    redirect(
+      "/student?error=" +
+        encodeURIComponent("아이디 또는 비밀번호가 맞지 않아요"),
+    );
   }
   if (student.status === "pending") {
     redirect(
       "/student?error=" +
-        encodeURIComponent("가입 승인 대기 중이에요. 선생님 승인 후 이용할 수 있어요")
+        encodeURIComponent(
+          "가입 승인 대기 중이에요. 선생님 승인 후 이용할 수 있어요",
+        ),
+    );
+  }
+  if (student.status === "withdrawn") {
+    redirect(
+      "/student?error=" +
+        encodeURIComponent(
+          "지금은 수강 중인 반이 없어 이용할 수 없어요. 선생님께 문의해 주세요",
+        ),
     );
   }
   if (student.status === "rejected") {
     redirect(
       "/student?error=" +
-        encodeURIComponent("가입이 반려되었어요. 선생님께 문의해 주세요")
+        encodeURIComponent("가입이 반려되었어요. 선생님께 문의해 주세요"),
     );
   }
 
@@ -168,8 +195,8 @@ export async function studentLogin(formData: FormData) {
     redirect(
       "/student?error=" +
         encodeURIComponent(
-          "이 반은 수업이 끝나 더 이상 이용할 수 없어요. 선생님께 문의해 주세요"
-        )
+          "이 반은 수업이 끝나 더 이상 이용할 수 없어요. 선생님께 문의해 주세요",
+        ),
     );
   }
 
@@ -195,7 +222,7 @@ export async function markNoticesRead(noticeIds: string[]) {
   const admin = createAdminClient();
   await admin.from("notice_reads").upsert(
     noticeIds.map((id) => ({ notice_id: id, student_id: session.studentId })),
-    { onConflict: "notice_id,student_id" }
+    { onConflict: "notice_id,student_id" },
   );
   revalidatePath("/student/home");
   revalidatePath("/student/notices");
@@ -254,7 +281,10 @@ export async function redeemCoupons() {
         .eq("id", teacherId)
         .maybeSingle()
     : { data: null };
-  const goal = Math.max(1, (settings as { coupon_goal?: number } | null)?.coupon_goal ?? 25);
+  const goal = Math.max(
+    1,
+    (settings as { coupon_goal?: number } | null)?.coupon_goal ?? 25,
+  );
 
   // 현재 쿠폰 수 = 기준 시각 이후 자동 적립분 + 이월분 + 선생님이 준 특별 쿠폰
   const resetAt = student?.coupons_reset_at ?? null;
@@ -285,4 +315,64 @@ export async function redeemCoupons() {
 
   revalidatePath("/student/home");
   redirect(`/student/home?redeemed=${carryOver}`);
+}
+
+// ---------- 가입 안내 링크로 계정 만들기 ----------
+// Student Card 에서 들어온 '가입 전' 학생이 알림톡으로 받은 개인 링크를 열고
+// 아이디·비밀번호를 정한다. 학원 명단으로 이미 확인된 학생이라 선생님 승인 없이
+// 바로 쓸 수 있다.
+export async function claimInvite(formData: FormData) {
+  const token = String(formData.get("token") || "").trim();
+  const username = String(formData.get("username") || "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") || "");
+  const passwordConfirm = String(formData.get("password_confirm") || "");
+  const back = `/student/join/${encodeURIComponent(token)}`;
+  const fail = (msg: string) =>
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+
+  if (!/^[a-f0-9]{20,}$/.test(token)) redirect("/student");
+  if (!USERNAME_RE.test(username))
+    fail("아이디는 영문·숫자 4~20자로 만들어 주세요");
+  if (password.length < 4) fail("비밀번호는 4자 이상이에요");
+  if (password !== passwordConfirm) fail("비밀번호가 서로 달라요");
+
+  const admin = createAdminClient();
+  const { data: student } = await admin
+    .from("students")
+    .select("id, name, number, class_id, status")
+    .eq("invite_token", token)
+    .maybeSingle();
+  if (!student || student.status !== "invited") {
+    redirect(`${back}?used=1`);
+  }
+
+  const { error } = await admin
+    .from("students")
+    .update({
+      username,
+      password_hash: hashPassword(password),
+      status: "approved",
+      approved_at: new Date().toISOString(),
+      // 한 번 쓴 링크는 다시 쓰지 못하게
+      invite_token: null,
+    })
+    .eq("id", student!.id)
+    .eq("status", "invited");
+  if (error) {
+    fail(
+      error.code === "23505"
+        ? "이미 쓰고 있는 아이디예요. 다른 아이디를 골라 주세요"
+        : "가입에 실패했어요. 다시 시도해 주세요",
+    );
+  }
+
+  await setStudentSession({
+    studentId: student!.id,
+    classId: student!.class_id,
+    name: student!.name,
+    number: student!.number ?? null,
+  });
+  redirect("/student/home");
 }

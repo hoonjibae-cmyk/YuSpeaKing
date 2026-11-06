@@ -26,6 +26,7 @@ import { todayKST, archiveCutoffKST, ARCHIVE_AFTER_DAYS } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
 import { listCouponHelpers } from "@/lib/coupon-helpers";
 import { sharedClassIds, accessFor } from "@/lib/class-access";
+import { getSyncMode } from "@/lib/hr/sync";
 import { appOrigin } from "@/lib/app-url";
 
 export default async function ClassDetailPage({
@@ -133,9 +134,15 @@ export default async function ClassDetailPage({
   };
   const roster = (students ?? []) as Row[];
   const pending = roster.filter((s) => s.status === "pending");
+  // invited: Student Card 에서 들어왔고 아직 계정을 만들지 않은 학생
+  // withdrawn: Student Card 에서 사라져 비활성으로 돌린 학생 (기록은 남아 있다)
   const approved = roster
-    .filter((s) => s.status !== "pending" && s.status !== "rejected")
+    .filter((s) => s.status === "approved")
     .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
+  const invited = roster.filter((s) => s.status === "invited");
+  const withdrawn = roster.filter((s) => s.status === "withdrawn");
+  // 일원화 중에는 반·학생을 Student Card 에서만 받는다 (운영자는 예외)
+  const cardOnly = role !== "admin" && (await getSyncMode()) === "oneway";
 
   // 학생별 쿠폰 개수 = 완성도 90 이상 제출(리셋 이후) + 선생님이 준 특별 쿠폰
   const couponCount = new Map<string, number>();
@@ -500,7 +507,13 @@ export default async function ClassDetailPage({
 
           {/* 가입 신청 링크 — 링크에 담기는 가입 코드는 '지금 보는 선생님'의
               것이라, 보조강사에게 보여 주면 엉뚱한 반으로 가입된다 */}
-          {canManage && (
+          {canManage && cardOnly && (
+            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+              📇 이 반의 학생은 <b>Student Card</b> 에서 들어와요. 학생 추가·반
+              이동은 Student Card 에서 하시면 다음 날 새벽에 반영됩니다.
+            </p>
+          )}
+          {canManage && !cardOnly && (
             <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
               <div className="text-xs font-medium text-slate-500">
                 학생 가입 신청 링크 (학생들에게 공유)
@@ -531,7 +544,7 @@ export default async function ClassDetailPage({
           )}
 
           {/* 승인 대기 (정보 수정 후 승인 가능) */}
-          {canManage && pending.length > 0 && (
+          {canManage && !cardOnly && pending.length > 0 && (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <div className="text-sm font-semibold text-amber-700">
                 가입 신청 대기 {pending.length}건
@@ -599,6 +612,22 @@ export default async function ClassDetailPage({
                 ))}
               </ul>
             </div>
+          )}
+
+          {/* 가입 전 학생 (Student Card 에서 들어옴) */}
+          {invited.length > 0 && (
+            <Link
+              href="/teacher/roster"
+              className="mt-3 flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-light px-3 py-2 text-sm text-brand hover:bg-blue-100"
+            >
+              <span className="min-w-0 flex-1">
+                <b>가입 전 학생 {invited.length}명</b>
+                <span className="block truncate text-xs text-slate-500">
+                  {invited.map((s) => s.name).join(", ")}
+                </span>
+              </span>
+              <span className="shrink-0 text-xs">가입 안내 보내기 →</span>
+            </Link>
           )}
 
           {/* 승인된 학생 목록 */}
@@ -757,6 +786,17 @@ export default async function ClassDetailPage({
               </li>
             ))}
           </ul>
+          {withdrawn.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-slate-400">
+                비활성 학생 {withdrawn.length}명 (Student Card 에서 빠짐 ·
+                기록은 그대로)
+              </summary>
+              <p className="mt-1 text-xs text-slate-500">
+                {withdrawn.map((s) => s.name).join(", ")}
+              </p>
+            </details>
+          )}
           <p className="mt-2 text-[11px] text-slate-400">
             🎟️ 특별 쿠폰은 과제 제출로 쌓이는 쿠폰과 별개로 선생님이 직접 주는
             쿠폰이에요. 학생 쿠폰함에{" "}

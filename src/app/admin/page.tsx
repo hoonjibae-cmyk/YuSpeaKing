@@ -213,7 +213,7 @@ export default async function AdminDashboard({
               : "border-slate-300 text-slate-600 hover:bg-slate-100"
           }`}
         >
-          🔗 반 매칭{unlinkedClasses ? ` ${unlinkedClasses}` : ""}
+          📇 Student Card 연동{unlinkedClasses ? ` ${unlinkedClasses}` : ""}
         </Link>
       </nav>
 

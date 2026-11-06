@@ -14,7 +14,10 @@ import {
 } from "@/lib/settings";
 import { sendWeeklySummary } from "@/lib/weekly-send";
 import { fetchHrClasses, hrConfigured } from "@/lib/hr/client";
-import { syncAll, syncClass } from "@/lib/hr/sync";
+import { generateClassCode } from "@/lib/class-code";
+import { applyClassHandover } from "@/lib/transfers";
+import { todayKST } from "@/lib/date";
+import { runFullSync, syncLinkedClass } from "@/lib/hr/sync";
 
 // 운영자가 특정 선생님으로 대행 시작 → 선생님 대시보드로 이동
 export async function impersonateTeacher(formData: FormData) {
@@ -100,137 +103,412 @@ export async function saveAiModel(formData: FormData) {
   redirect("/admin/settings?saved=1");
 }
 
-// ---------- Student Card 반 매칭 ----------
+// ---------- Student Card 전환 도구 ----------
+//
+// 모든 동작은 운영자 확인을 거친다. 여기서 하는 일은 '이어 주기' 가 대부분이고,
+// 기존 자료를 바꾸는 것(담임 변경·연락처 덮어쓰기·일원화 켜기)은 화면에서 한 번 더
+// 확인을 받는다.
 
-// 유스피킹 반 ↔ Student Card 반 잇기.
-// 이름이 서로 달라도 여기서 한 번 이어 두면 그 뒤로는 ID 로 따라간다.
-export async function linkHrClass(formData: FormData) {
+const HR = "/admin/hr";
+const back = (q: Record<string, string>, hash = "") =>
+  `${HR}?${new URLSearchParams(q).toString()}${hash}`;
+
+async function logSync(row: {
+  kind: string;
+  class_id?: string | null;
+  student_id?: string | null;
+  detail: string;
+}) {
+  await createAdminClient().from("hr_sync_log").insert(row);
+}
+
+// 선생님 매칭: Student Card 담임 이름 ↔ 유스피킹 선생님
+export async function linkTeacher(formData: FormData) {
   const me = await requireAdmin();
-  const classId = String(formData.get("classId") || "");
-  const hrClassId = String(formData.get("hrClassId") || "");
-  if (!classId) redirect("/admin/hr");
-
+  const cardName = String(formData.get("cardName") || "").trim();
+  const teacherId = String(formData.get("teacherId") || "");
+  if (!cardName) redirect(HR);
   const admin = createAdminClient();
 
-  // 빈 값을 고르면 연결 해제
-  if (!hrClassId) {
-    await admin.from("class_links").delete().eq("class_id", classId);
-    await admin.from("hr_pending_students").delete().eq("class_id", classId);
-    revalidatePath("/admin/hr");
-    redirect("/admin/hr?done=" + encodeURIComponent("연결을 해제했어요."));
+  if (!teacherId) {
+    await admin
+      .from("teacher_links")
+      .delete()
+      .eq("card_teacher_name", cardName);
+    revalidatePath(HR);
+    redirect(back({ done: `${cardName}: 연결을 해제했어요` }, "#teachers"));
   }
-
-  let hrName: string;
-  try {
-    const selected = (await fetchHrClasses()).find(
-      (c) => c.hrClassId === hrClassId,
-    );
-    if (!selected)
-      throw new Error("Student Card에서 선택한 반을 찾지 못했습니다.");
-    hrName = selected.name;
-  } catch (error) {
-    redirect(
-      "/admin/hr?error=" +
-        encodeURIComponent(
-          error instanceof Error
-            ? error.message
-            : "Student Card 반 목록 조회 실패",
-        ),
-    );
-  }
-
-  // hr_class_id 에 unique 가 걸려 있다 — 다른 반이 이미 쓰고 있으면 알린다
-  const { data: taken } = await admin
-    .from("class_links")
-    .select("class_id")
-    .eq("hr_class_id", hrClassId)
-    .neq("class_id", classId)
-    .maybeSingle();
-  if (taken) {
-    redirect(
-      "/admin/hr?error=" +
-        encodeURIComponent(
-          "그 Student Card 반은 이미 다른 반과 이어져 있어요. 먼저 해제해 주세요.",
-        ),
-    );
-  }
-
-  const { error } = await admin.from("class_links").upsert(
+  await admin.from("teacher_links").upsert(
     {
-      class_id: classId,
-      hr_class_id: hrClassId,
-      hr_class_name: hrName,
+      card_teacher_name: cardName,
+      teacher_id: teacherId,
+      method: "manual",
       linked_at: new Date().toISOString(),
       linked_by: me.id,
     },
-    { onConflict: "class_id" },
+    { onConflict: "card_teacher_name" },
   );
-  if (error) {
-    redirect("/admin/hr?error=" + encodeURIComponent(error.message));
+  revalidatePath(HR);
+  redirect(back({ done: `${cardName}: 선생님을 이었어요` }, "#teachers"));
+}
+
+// 반 매칭: Student Card 반 ↔ 유스피킹 반 (빈 값이면 해제)
+export async function linkClassPair(formData: FormData) {
+  const me = await requireAdmin();
+  const hrClassId = String(formData.get("hrClassId") || "");
+  const classId = String(formData.get("classId") || "");
+  if (!hrClassId) redirect(HR);
+  const admin = createAdminClient();
+
+  if (!classId) {
+    const { data: prev } = await admin
+      .from("class_links")
+      .select("class_id")
+      .eq("hr_class_id", hrClassId)
+      .maybeSingle();
+    await admin.from("class_links").delete().eq("hr_class_id", hrClassId);
+    if (prev) {
+      const cid = (prev as { class_id: string }).class_id;
+      await admin.from("hr_pending_students").delete().eq("class_id", cid);
+      await admin.from("hr_match_suggestions").delete().eq("class_id", cid);
+    }
+    revalidatePath(HR);
+    redirect(back({ done: "반 연결을 해제했어요" }, "#classes"));
   }
 
-  // 이어 준 직후 바로 명단을 받아 와, 운영자가 결과를 그 자리에서 본다
-  const { data: klass } = await admin
-    .from("classes")
-    .select("name")
-    .eq("id", classId)
-    .maybeSingle();
-  const report = await syncClass(
-    classId,
-    (klass as { name: string } | null)?.name ?? "",
-    hrClassId,
-  );
+  let card: { name: string } | undefined;
+  try {
+    card = (await fetchHrClasses()).find((c) => c.hrClassId === hrClassId);
+  } catch (e) {
+    redirect(
+      back({ error: e instanceof Error ? e.message : "반 목록 조회 실패" }),
+    );
+  }
+  if (!card)
+    redirect(back({ error: "Student Card 에서 그 반을 찾지 못했어요" }));
 
-  revalidatePath("/admin/hr");
+  // 한 유스피킹 반에는 Student Card 반 하나만 — 예전 연결을 정리한다
+  await admin.from("class_links").delete().eq("class_id", classId);
+  await admin.from("class_links").delete().eq("hr_class_id", hrClassId);
+  const { error } = await admin.from("class_links").insert({
+    class_id: classId,
+    hr_class_id: hrClassId,
+    hr_class_name: card!.name,
+    linked_at: new Date().toISOString(),
+    linked_by: me.id,
+  });
+  if (error) redirect(back({ error: error.message }));
+  await logSync({
+    kind: "class_linked",
+    class_id: classId,
+    detail: `↔ ${card!.name} (운영자)`,
+  });
+
+  // 이어 준 직후 학생을 맞춰 결과를 그 자리에서 보여 준다
+  const r = await syncLinkedClass(classId);
+  revalidatePath(HR);
   redirect(
-    "/admin/hr?done=" +
-      encodeURIComponent(
-        report.error
-          ? `이어 뒀지만 명단 조회에 실패했어요 — ${report.error}`
-          : `이어 뒀어요. 연락처 ${report.updated}명 갱신 · 확인 필요 ${
-              report.pendingNew + report.pendingAmbiguous
-            }명`,
-      ),
+    back(
+      {
+        done: r?.error
+          ? `반을 이었지만 명단을 받지 못했어요 — ${r.error}`
+          : `반을 이었어요 · 학생 ${r?.linked ?? 0}명 연결 · 확인 필요 ${r?.pendingAmbiguous ?? 0}명`,
+      },
+      "#classes",
+    ),
   );
 }
 
-// 이어진 모든 반의 명단을 지금 다시 받아 온다 (크론과 같은 일).
+// Student Card 반을 유스피킹에 새로 만든다 (담임 = 이어진 선생님)
+export async function createClassFromCard(formData: FormData) {
+  const me = await requireAdmin();
+  const hrClassId = String(formData.get("hrClassId") || "");
+  const teacherId = String(formData.get("teacherId") || "");
+  if (!hrClassId || !teacherId) {
+    redirect(back({ error: "담임 선생님을 먼저 정해 주세요" }, "#classes"));
+  }
+  const admin = createAdminClient();
+
+  let card: { name: string } | undefined;
+  try {
+    card = (await fetchHrClasses()).find((c) => c.hrClassId === hrClassId);
+  } catch (e) {
+    redirect(
+      back({ error: e instanceof Error ? e.message : "반 목록 조회 실패" }),
+    );
+  }
+  if (!card)
+    redirect(back({ error: "Student Card 에서 그 반을 찾지 못했어요" }));
+
+  let classId: string | null = null;
+  for (let attempt = 0; attempt < 5 && !classId; attempt++) {
+    const { data, error } = await admin
+      .from("classes")
+      .insert({
+        teacher_id: teacherId,
+        name: card!.name,
+        class_code: generateClassCode(),
+      })
+      .select("id")
+      .single();
+    if (!error && data) classId = (data as { id: string }).id;
+    else if (error?.code !== "23505")
+      redirect(back({ error: error?.message ?? "반 생성 실패" }));
+  }
+  if (!classId)
+    redirect(back({ error: "반 코드를 만들지 못했어요. 다시 시도해 주세요" }));
+
+  await admin.from("class_links").insert({
+    class_id: classId,
+    hr_class_id: hrClassId,
+    hr_class_name: card!.name,
+    linked_by: me.id,
+  });
+  await logSync({
+    kind: "class_created",
+    class_id: classId,
+    detail: `${card!.name} (운영자)`,
+  });
+  const r = await syncLinkedClass(classId!);
+  revalidatePath(HR);
+  revalidatePath("/admin");
+  redirect(
+    back(
+      {
+        done: `${card!.name} 반을 만들었어요 · 학생 ${r?.created ?? 0}명 가입 전으로 추가`,
+      },
+      "#classes",
+    ),
+  );
+}
+
+// 유스피킹 반의 담임을 Student Card 담임으로 바꾼다 (기존 자료 변경 — 화면에서 확인)
+export async function applyCardTeacher(formData: FormData) {
+  await requireAdmin();
+  const classId = String(formData.get("classId") || "");
+  const teacherId = String(formData.get("teacherId") || "");
+  if (!classId || !teacherId) redirect(HR);
+  const admin = createAdminClient();
+  const { data: klass } = await admin
+    .from("classes")
+    .select("name, teacher_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (!klass) redirect(HR);
+  const k = klass as { name: string; teacher_id: string };
+  if (k.teacher_id !== teacherId) {
+    await applyClassHandover({
+      classId,
+      toTeacherId: teacherId,
+      coteachStart: null,
+      effective: todayKST(),
+    });
+    await logSync({
+      kind: "owner_changed",
+      class_id: classId,
+      detail: `${k.name}: 담임 변경 (운영자, Student Card 기준)`,
+    });
+  }
+  revalidatePath(HR);
+  redirect(
+    back(
+      { done: `${k.name}: 담임을 Student Card 기준으로 바꿨어요` },
+      "#classes",
+    ),
+  );
+}
+
+// 학생 수동 연결: 유스피킹 학생 ↔ Student Card 학생
+export async function linkStudentManual(formData: FormData) {
+  await requireAdmin();
+  const studentId = String(formData.get("studentId") || "");
+  const hrStudentId = String(formData.get("hrStudentId") || "");
+  if (!studentId || !hrStudentId) redirect(back({}, "#students"));
+  const admin = createAdminClient();
+
+  const { data: pend } = await admin
+    .from("hr_pending_students")
+    .select("student_phone, parent_phone, name, class_id")
+    .eq("hr_student_id", hrStudentId)
+    .maybeSingle();
+  const { data: stu } = await admin
+    .from("students")
+    .select("name, class_id, student_phone, parent_phone, status")
+    .eq("id", studentId)
+    .maybeSingle();
+  if (!stu) redirect(back({}, "#students"));
+  const s = stu as {
+    name: string;
+    class_id: string;
+    student_phone: string | null;
+    parent_phone: string | null;
+    status: string;
+  };
+  const p = pend as {
+    student_phone: string | null;
+    parent_phone: string | null;
+    name: string;
+  } | null;
+
+  // 비어 있는 연락처만 채운다 (기존 번호는 그대로)
+  const patch: Record<string, unknown> = {
+    hr_student_id: hrStudentId,
+    hr_link_method: "manual",
+  };
+  if (!s.student_phone && p?.student_phone)
+    patch.student_phone = p.student_phone;
+  if (!s.parent_phone && p?.parent_phone) patch.parent_phone = p.parent_phone;
+
+  const { error } = await admin
+    .from("students")
+    .update(patch)
+    .eq("id", studentId);
+  if (error) {
+    redirect(
+      back(
+        {
+          error:
+            error.code === "23505"
+              ? "그 Student Card 학생은 이미 다른 유스피킹 학생과 이어져 있어요"
+              : error.message,
+        },
+        "#students",
+      ),
+    );
+  }
+  await Promise.all([
+    admin.from("hr_pending_students").delete().eq("hr_student_id", hrStudentId),
+    admin
+      .from("hr_match_suggestions")
+      .delete()
+      .eq("local_student_id", studentId),
+    admin
+      .from("hr_match_suggestions")
+      .delete()
+      .eq("hr_student_id", hrStudentId),
+  ]);
+  await logSync({
+    kind: "student_linked",
+    class_id: s.class_id,
+    student_id: studentId,
+    detail: `${s.name} ↔ ${p?.name ?? hrStudentId} (운영자)`,
+  });
+  revalidatePath(HR);
+  redirect(back({ done: `${s.name}: 이었어요` }, "#students"));
+}
+
+// 학생 연결 해제 / 'Student Card 에 없음' 표시 / 표시 해제
+export async function setStudentLink(formData: FormData) {
+  await requireAdmin();
+  const studentId = String(formData.get("studentId") || "");
+  const action = String(formData.get("action") || "");
+  if (!studentId) redirect(back({}, "#students"));
+  const admin = createAdminClient();
+  const patch =
+    action === "none"
+      ? { hr_student_id: null, hr_link_method: "none" }
+      : { hr_student_id: null, hr_link_method: null };
+  await admin.from("students").update(patch).eq("id", studentId);
+  await admin
+    .from("hr_match_suggestions")
+    .delete()
+    .eq("local_student_id", studentId);
+  await admin.from("hr_contact_diffs").delete().eq("student_id", studentId);
+  revalidatePath(HR);
+  redirect(
+    back(
+      {
+        done:
+          action === "none"
+            ? "Student Card 에 없는 학생으로 표시했어요 (다시 맞추지 않아요)"
+            : "연결을 풀었어요. 다음 동기화 때 다시 맞춥니다",
+      },
+      "#students",
+    ),
+  );
+}
+
+// 연락처 차이: Student Card 번호로 바꾼다 (기존 번호 변경 — 화면에서 확인)
+export async function applyContactDiff(formData: FormData) {
+  await requireAdmin();
+  const studentId = String(formData.get("studentId") || "");
+  if (!studentId) redirect(back({}, "#students"));
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("hr_contact_diffs")
+    .select("card_student_phone, card_parent_phone")
+    .eq("student_id", studentId)
+    .maybeSingle();
+  const d = data as {
+    card_student_phone: string | null;
+    card_parent_phone: string | null;
+  } | null;
+  if (d) {
+    const patch: Record<string, string> = {};
+    if (d.card_student_phone) patch.student_phone = d.card_student_phone;
+    if (d.card_parent_phone) patch.parent_phone = d.card_parent_phone;
+    if (Object.keys(patch).length) {
+      await admin.from("students").update(patch).eq("id", studentId);
+    }
+    await admin.from("hr_contact_diffs").delete().eq("student_id", studentId);
+  }
+  revalidatePath(HR);
+  redirect(
+    back({ done: "연락처를 Student Card 번호로 바꿨어요" }, "#students"),
+  );
+}
+
+// 지금 동기화
 export async function syncAllRosters() {
   await requireAdmin();
   if (!hrConfigured()) {
     redirect(
-      "/admin/hr?error=" +
-        encodeURIComponent(
-          "STUDENT_CARD_ROSTER_KEY 환경변수를 먼저 등록해 주세요.",
-        ),
+      back({ error: "STUDENT_CARD_ROSTER_KEY 환경변수를 먼저 등록해 주세요." }),
     );
   }
-
-  let reports;
+  let msg = "";
   try {
-    reports = await syncAll();
+    const s = await runFullSync();
+    const linked = s.reports.reduce((n, r) => n + r.linked, 0);
+    const created = s.reports.reduce((n, r) => n + r.created, 0);
+    const amb = s.reports.reduce((n, r) => n + r.pendingAmbiguous, 0);
+    msg =
+      `선생님 ${s.teachersLinked}명 · 반 ${s.classesLinked + s.classesCreated}개 · 학생 ${linked}명 이음` +
+      (created ? ` · 가입 전 학생 ${created}명 추가` : "") +
+      (s.studentsMoved ? ` · 반 이동 ${s.studentsMoved}명` : "") +
+      (s.studentsWithdrawn ? ` · 비활성 ${s.studentsWithdrawn}명` : "") +
+      (amb ? ` · 확인 필요 ${amb}명` : "");
   } catch (e) {
-    console.error("[HR] 전체 동기화 실패:", e);
-    redirect(
-      "/admin/hr?error=" +
-        encodeURIComponent(e instanceof Error ? e.message : "동기화 실패"),
-    );
+    console.error("[Student Card] 동기화 실패:", e);
+    redirect(back({ error: e instanceof Error ? e.message : "동기화 실패" }));
   }
+  revalidatePath(HR);
+  redirect(back({ done: msg }));
+}
 
-  const failed = reports.filter((r) => r.error);
-  const updated = reports.reduce((n, r) => n + r.updated, 0);
-  const pending = reports.reduce(
-    (n, r) => n + r.pendingNew + r.pendingAmbiguous,
-    0,
-  );
-
-  revalidatePath("/admin/hr");
+// 일원화 켜기 / 끄기
+export async function setSyncMode(formData: FormData) {
+  await requireAdmin();
+  const mode =
+    String(formData.get("mode") || "") === "oneway" ? "oneway" : "convert";
+  await createAdminClient()
+    .from("app_settings")
+    .update({ hr_sync_mode: mode })
+    .eq("id", 1);
+  await logSync({
+    kind: "mode_changed",
+    detail:
+      mode === "oneway" ? "일원화 켬 (운영자)" : "전환 상태로 되돌림 (운영자)",
+  });
+  revalidatePath(HR);
+  revalidatePath("/teacher");
   redirect(
-    "/admin/hr?done=" +
-      encodeURIComponent(
-        `${reports.length}개 반 확인 · 연락처 ${updated}명 갱신 · 확인 필요 ${pending}명` +
-          (failed.length ? ` · 실패 ${failed.length}개 반` : ""),
-      ),
+    back({
+      done:
+        mode === "oneway"
+          ? "일원화를 켰어요. 다음 동기화부터 Student Card 를 따릅니다 (지금 동기화를 누르면 바로 적용)"
+          : "전환 상태로 되돌렸어요. 자동 생성·이동·비활성화를 멈춥니다",
+    }),
   );
 }
 

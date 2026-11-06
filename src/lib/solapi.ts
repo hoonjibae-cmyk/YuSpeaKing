@@ -11,7 +11,8 @@ import crypto from "crypto";
 //   SOLAPI_API_KEY      솔라피 API 키
 //   SOLAPI_API_SECRET   솔라피 API 시크릿
 //   SOLAPI_PFID         카카오 비즈니스 채널(발신프로필) ID
-//   SOLAPI_TEMPLATE_ID  승인받은 알림톡 템플릿 ID
+//   SOLAPI_TEMPLATE_ID  승인받은 알림톡 템플릿 ID (월말 리포트)
+//   SOLAPI_INVITE_TEMPLATE_ID  승인받은 알림톡 템플릿 ID (가입 안내)
 //   SOLAPI_SENDER       등록된 발신번호 (알림톡 실패 시 문자 대체 발송용)
 
 const API = "https://api.solapi.com/messages/v4/send-many/detail";
@@ -30,12 +31,21 @@ export interface SendResult {
   failures?: { to: string; reason: string }[];
 }
 
-export function alimtalkConfigured(): boolean {
+// 템플릿은 용도마다 따로 심사받는다. 문구가 다르면 같은 템플릿으로 보낼 수 없다.
+export type TemplateKind = "report" | "invite";
+
+function templateIdFor(kind: TemplateKind): string | undefined {
+  return kind === "invite"
+    ? process.env.SOLAPI_INVITE_TEMPLATE_ID
+    : process.env.SOLAPI_TEMPLATE_ID;
+}
+
+export function alimtalkConfigured(kind: TemplateKind = "report"): boolean {
   return Boolean(
     process.env.SOLAPI_API_KEY &&
-      process.env.SOLAPI_API_SECRET &&
-      process.env.SOLAPI_PFID &&
-      process.env.SOLAPI_TEMPLATE_ID
+    process.env.SOLAPI_API_SECRET &&
+    process.env.SOLAPI_PFID &&
+    templateIdFor(kind),
   );
 }
 
@@ -70,10 +80,11 @@ function authHeader() {
 }
 
 export async function sendAlimtalk(
-  targets: AlimtalkTarget[]
+  targets: AlimtalkTarget[],
+  kind: TemplateKind = "report",
 ): Promise<SendResult> {
   if (targets.length === 0) return { ok: true, sent: 0, failed: 0 };
-  if (!alimtalkConfigured()) {
+  if (!alimtalkConfigured(kind)) {
     return {
       ok: false,
       sent: 0,
@@ -89,7 +100,7 @@ export async function sendAlimtalk(
       from: process.env.SOLAPI_SENDER || undefined,
       kakaoOptions: {
         pfId: process.env.SOLAPI_PFID,
-        templateId: process.env.SOLAPI_TEMPLATE_ID,
+        templateId: templateIdFor(kind),
         variables: t.variables,
         // 알림톡이 막히면(채널 차단 등) 문자로 대체 발송.
         // 발신번호가 없으면 대체 발송도 불가하므로 그때는 끈다.

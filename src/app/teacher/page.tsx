@@ -3,7 +3,7 @@ import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { applyDueTransfers } from "@/lib/transfers";
 import { sharedClassIds } from "@/lib/class-access";
-import { pendingCountForTeacher } from "@/lib/hr/sync";
+import { getSyncMode, pendingCountForTeacher } from "@/lib/hr/sync";
 import { createClass, signOut, saveCouponSettings } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { CrownMark } from "@/components/Logo";
@@ -196,33 +196,40 @@ export default async function TeacherDashboard({
         >
           <span className="text-lg">🧾</span>
           <span className="min-w-0 flex-1">
-            <b>등록되지 않은 학생 {pendingRoster}명</b>이 반 명단에 있어요.
+            <b>가입하지 않은 학생 {pendingRoster}명</b>이 반 명단에 있어요.
             <span className="block text-xs text-amber-700">
-              눌러서 확인하고 학생을 등록해 주세요.
+              눌러서 확인하고 가입 안내를 보내 주세요.
             </span>
           </span>
           <span className="shrink-0 text-amber-500">→</span>
         </Link>
       )}
 
-      {/* 반 만들기 */}
-      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="font-semibold">새 반 만들기</h2>
-        <form action={createClass} className="mt-3 flex gap-2">
-          <input
-            name="name"
-            placeholder="예: 6학년 A반"
-            required
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
-          />
-          <SubmitButton
-            pendingText="만드는 중…"
-            className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark"
-          >
-            만들기
-          </SubmitButton>
-        </form>
-      </section>
+      {/* 반 만들기 — Student Card 일원화 중에는 반이 Student Card 에서만 들어온다 */}
+      {role !== "admin" && (await getSyncMode()) === "oneway" ? (
+        <p className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          📇 반과 학생은 <b>Student Card</b> 에서 자동으로 들어와요. 새 반이나
+          반 이동은 Student Card 에서 하시면 다음 날 새벽에 반영됩니다.
+        </p>
+      ) : (
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold">새 반 만들기</h2>
+          <form action={createClass} className="mt-3 flex gap-2">
+            <input
+              name="name"
+              placeholder="예: 6학년 A반"
+              required
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:border-brand focus:outline-none"
+            />
+            <SubmitButton
+              pendingText="만드는 중…"
+              className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark"
+            >
+              만들기
+            </SubmitButton>
+          </form>
+        </section>
+      )}
 
       {/* 쿠폰/보상 설정 */}
       <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6">

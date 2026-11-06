@@ -182,9 +182,11 @@ export default async function TeacherRosterPage({
                         {byId.get(r.classId)}
                       </span>
                       <span className="block text-xs text-slate-400">
-                        {r.phoneOwner
-                          ? `${r.phoneOwner} ${fmtPhone(r.phone)}`
-                          : "연락처 없음"}
+                        {r.phoneOwner === "학생"
+                          ? `학생 ${fmtPhone(r.phone)}`
+                          : r.phoneOwner === "학부모"
+                            ? ""
+                            : "연락처 없음"}
                         {r.sentAt
                           ? ` · ${r.sentAt.slice(5, 10).replace("-", "/")} 안내 보냄${
                               r.sentCount > 1 ? ` (${r.sentCount}회)` : ""
@@ -211,9 +213,16 @@ export default async function TeacherRosterPage({
                         다음 동기화 때 가입 링크가 생겨요
                       </span>
                     )}
+                    {r.phoneOwner === "학부모" && (
+                      <span className="w-full rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                        ⚠️ 학생 번호가 없어{" "}
+                        <b>학부모 번호({fmtPhone(r.phone)})</b>로 대신 보내요.
+                        학생에게 따로 전해 달라고 말씀해 주세요.
+                      </span>
+                    )}
                     {!r.phone && (
                       <span className="text-[11px] text-amber-600">
-                        Student Card 에 연락처가 없어요
+                        Student Card 에 학생·학부모 번호가 모두 없어요
                       </span>
                     )}
                   </li>
@@ -222,11 +231,12 @@ export default async function TeacherRosterPage({
             </ul>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-slate-400">
-                학부모 번호로 보내고, 없으면 학생 번호로 보내요.
+                학생 번호로 보내요. 학생 번호가 없으면 학부모 번호로 대신 보내요
+                (⚠️ 표시).
               </span>
               <ConfirmSubmitButton
                 message={
-                  "선택한 학생에게 가입 안내 알림톡을 보낼까요?\n\n보낸 뒤에는 취소할 수 없어요."
+                  "선택한 학생에게 가입 안내 알림톡을 보낼까요?\n\n학생 번호가 없는 학생(⚠️ 표시)은 학부모 번호로 갑니다.\n보낸 뒤에는 취소할 수 없어요."
                 }
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-40"
               >

@@ -13,6 +13,7 @@ import crypto from "crypto";
 //   SOLAPI_PFID         카카오 비즈니스 채널(발신프로필) ID
 //   SOLAPI_TEMPLATE_ID  승인받은 알림톡 템플릿 ID (월말 리포트)
 //   SOLAPI_INVITE_TEMPLATE_ID  승인받은 알림톡 템플릿 ID (가입 안내)
+//   SOLAPI_PARENT_TEMPLATE_ID  승인받은 알림톡 템플릿 ID (학부모 링크 안내)
 //   SOLAPI_SENDER       등록된 발신번호 (알림톡 실패 시 문자 대체 발송용)
 
 const API = "https://api.solapi.com/messages/v4/send-many/detail";
@@ -32,12 +33,12 @@ export interface SendResult {
 }
 
 // 템플릿은 용도마다 따로 심사받는다. 문구가 다르면 같은 템플릿으로 보낼 수 없다.
-export type TemplateKind = "report" | "invite";
+export type TemplateKind = "report" | "invite" | "parent";
 
 function templateIdFor(kind: TemplateKind): string | undefined {
-  return kind === "invite"
-    ? process.env.SOLAPI_INVITE_TEMPLATE_ID
-    : process.env.SOLAPI_TEMPLATE_ID;
+  if (kind === "invite") return process.env.SOLAPI_INVITE_TEMPLATE_ID;
+  if (kind === "parent") return process.env.SOLAPI_PARENT_TEMPLATE_ID;
+  return process.env.SOLAPI_TEMPLATE_ID;
 }
 
 export function alimtalkConfigured(kind: TemplateKind = "report"): boolean {

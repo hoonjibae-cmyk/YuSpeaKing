@@ -18,19 +18,22 @@ export interface Uninvited {
   className: string;
   name: string;
   hrStudentId: string | null;
-  phone: string | null; // 보낼 번호 (학부모 우선, 없으면 학생)
-  phoneOwner: "학부모" | "학생" | null;
+  phone: string | null; // 보낼 번호 — 학생 번호, 없으면 학부모 번호
+  phoneOwner: "학생" | "학부모" | null;
   sentAt: string | null;
   sentCount: number;
   // invited 만: 개인 링크용 토큰
   token: string | null;
 }
 
-export function pickPhone(parent: string | null, student: string | null) {
-  const p = normalizePhone(parent);
-  if (p) return { phone: p, phoneOwner: "학부모" as const };
+// 가입 안내는 학생 본인 번호로 보낸다 — 아이디를 만드는 건 학생이다.
+// 학생 번호가 없을 때만 학부모 번호로 대신 보내고, 화면에 그렇게 표시한다
+// (선생님이 '학부모께 갔다' 는 걸 알고 있어야 학생에게 따로 말해 줄 수 있다).
+export function pickPhone(student: string | null, parent: string | null) {
   const s = normalizePhone(student);
   if (s) return { phone: s, phoneOwner: "학생" as const };
+  const p = normalizePhone(parent);
+  if (p) return { phone: p, phoneOwner: "학부모" as const };
   return { phone: null, phoneOwner: null };
 }
 
@@ -77,7 +80,7 @@ export async function listUninvited(
       className: nameOf.get(s.class_id) ?? "",
       name: s.name,
       hrStudentId: s.hr_student_id,
-      ...pickPhone(s.parent_phone, s.student_phone),
+      ...pickPhone(s.student_phone, s.parent_phone),
       sentAt: null,
       sentCount: 0,
       token: s.invite_token,
@@ -97,7 +100,7 @@ export async function listUninvited(
       className: nameOf.get(p.class_id) ?? "",
       name: p.name,
       hrStudentId: p.hr_student_id,
-      ...pickPhone(p.parent_phone, p.student_phone),
+      ...pickPhone(p.student_phone, p.parent_phone),
       sentAt: null,
       sentCount: 0,
       token: null,

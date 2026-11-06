@@ -503,7 +503,17 @@ export default async function ClassDetailPage({
       <div className="mt-8 grid gap-8 md:grid-cols-2">
         {/* 학생 명단 */}
         <section>
-          <h2 className="font-semibold">학생 명단 ({approved.length})</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">학생 명단 ({approved.length})</h2>
+            {canManage && approved.length > 0 && (
+              <Link
+                href={`/teacher/classes/${classId}/parents`}
+                className="whitespace-nowrap rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              >
+                📩 학부모 링크 보내기
+              </Link>
+            )}
+          </div>
 
           {/* 가입 신청 링크 — 링크에 담기는 가입 코드는 '지금 보는 선생님'의
               것이라, 보조강사에게 보여 주면 엉뚱한 반으로 가입된다 */}

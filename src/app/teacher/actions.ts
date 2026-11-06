@@ -28,6 +28,7 @@ import {
   sendAlimtalk,
 } from "@/lib/solapi";
 import { listUninvited, type Uninvited } from "@/lib/invites";
+import { listParentLinks, canManageClass } from "@/lib/parent-links";
 import { hrConfigured } from "@/lib/hr/client";
 import { syncAll, type SyncReport } from "@/lib/hr/sync";
 
@@ -1767,7 +1768,8 @@ export async function dismissPendingStudent(formData: FormData) {
 
 // ---------- 가입 안내 알림톡 ----------
 
-// 가입하지 않은 학생에게 가입 안내를 보낸다 (학부모 번호 우선, 없으면 학생 번호).
+// 가입하지 않은 학생에게 가입 안내를 보낸다.
+// 학생 번호로 보내고, 학생 번호가 없으면 학부모 번호로 대신 보낸다 (결과에 따로 알린다).
 //  · 가입 전(invited) 학생: 개인 가입 링크 — 누르면 바로 아이디를 만든다
 //  · 전환 중이라 아직 유스피킹에 없는 학생: 담임 선생님의 가입 신청 링크
 export async function sendSignupInvites(formData: FormData) {
@@ -1826,7 +1828,7 @@ export async function sendSignupInvites(formData: FormData) {
   const skipped: string[] = [];
   for (const r of picked) {
     if (!r.phone) {
-      skipped.push(`${r.name}(번호 없음)`);
+      skipped.push(`${r.name}(연락처 없음)`);
       continue;
     }
     let link: string | null = null;
@@ -1879,11 +1881,140 @@ export async function sendSignupInvites(formData: FormData) {
     });
   }
 
+  const viaParent = sentKeys
+    .filter((r) => r.phoneOwner === "학부모")
+    .map((r) => r.name);
   const parts = [`${result.sent}명에게 가입 안내를 보냈어요`];
+  // 학부모 번호로 대신 간 학생은 선생님이 알아야 학생에게 따로 말해 줄 수 있다
+  if (viaParent.length)
+    parts.push(`학생 번호가 없어 학부모 번호로 보냄: ${viaParent.join(", ")}`);
   if (result.failed) parts.push(`${result.failed}명 실패`);
   if (skipped.length) parts.push(`제외: ${skipped.join(", ")}`);
   if (result.error) parts.push(result.error);
   revalidatePath(back);
+  redirect(
+    `${back}?${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`,
+  );
+}
+
+// 학부모 열람 링크 알림톡 — 학부모 번호로만 보낸다.
+// 링크가 아직 없는 학생은 여기서 새로 만든다 (이미 있는 링크는 바꾸지 않는다:
+// 바꾸면 전에 보낸 링크가 죽는다).
+export async function sendParentLinks(formData: FormData) {
+  const { effectiveId, role } = await getTeacherContext();
+  const classId = String(formData.get("classId") || "");
+  const back = `/teacher/classes/${classId}/parents`;
+  const ids = formData.getAll("studentIds").map(String).filter(Boolean);
+
+  const access = await canManageClass(effectiveId, classId);
+  if (!access.ok) redirect("/teacher");
+  if (ids.length === 0) {
+    redirect(
+      `${back}?error=${encodeURIComponent("보낼 학생을 선택해 주세요")}`,
+    );
+  }
+  if (!alimtalkConfigured("parent")) {
+    redirect(
+      `${back}?error=${encodeURIComponent(
+        "학부모 링크 알림톡이 아직 설정되지 않았어요 (SOLAPI_PARENT_TEMPLATE_ID). 운영자에게 문의해 주세요.",
+      )}`,
+    );
+  }
+  const origin = appOrigin();
+  if (!/^https?:\/\/[^/]+/i.test(origin)) {
+    redirect(
+      `${back}?error=${encodeURIComponent(
+        "링크 주소를 만들 수 없어요. 운영자에게 NEXT_PUBLIC_APP_URL 설정을 문의해 주세요.",
+      )}`,
+    );
+  }
+
+  const admin = createAdminClient();
+  const picked = (await listParentLinks(classId)).filter((r) =>
+    ids.includes(r.studentId),
+  );
+
+  const targets: { to: string; variables: Record<string, string> }[] = [];
+  const sentRows: typeof picked = [];
+  const skipped: string[] = [];
+  for (const r of picked) {
+    if (!r.phone) {
+      skipped.push(`${r.name}(학부모 번호 없음)`);
+      continue;
+    }
+    let token = r.token;
+    if (!token) {
+      token = randomBytes(16).toString("hex");
+      // 그 사이 다른 사람이 만들었으면 덮어쓰지 않는다
+      const { data: set } = await admin
+        .from("students")
+        .update({ parent_token: token })
+        .eq("id", r.studentId)
+        .is("parent_token", null)
+        .select("id");
+      if (!set?.length) {
+        const { data: again } = await admin
+          .from("students")
+          .select("parent_token")
+          .eq("id", r.studentId)
+          .maybeSingle();
+        token =
+          (again as { parent_token: string | null } | null)?.parent_token ??
+          null;
+      }
+      if (!token) {
+        skipped.push(`${r.name}(링크 만들기 실패)`);
+        continue;
+      }
+    }
+    targets.push({
+      to: r.phone,
+      variables: {
+        "#{이름}": r.name,
+        "#{반}": access.name,
+        // 템플릿 버튼에 https:// 가 고정되어 있다 (월말 리포트와 같은 규칙)
+        "#{링크}": bareLink(`${origin}/parent/${token}`),
+      },
+    });
+    sentRows.push(r);
+  }
+
+  if (targets.length === 0) {
+    revalidatePath(back);
+    redirect(
+      `${back}?error=${encodeURIComponent(`보낼 수 있는 학생이 없어요. ${skipped.join(", ")}`)}`,
+    );
+  }
+
+  const result = await sendAlimtalk(targets, "parent");
+
+  if (result.sent > 0) {
+    const failedTo = new Set((result.failures ?? []).map((f) => f.to));
+    const now = new Date().toISOString();
+    for (const r of sentRows) {
+      if (failedTo.has(r.phone!)) continue;
+      await admin.from("parent_link_sends").upsert(
+        {
+          student_id: r.studentId,
+          sent_at: now,
+          sent_to: r.phone,
+          sent_count: r.sentCount + 1,
+        },
+        { onConflict: "student_id" },
+      );
+    }
+    await admin.from("hr_sync_log").insert({
+      kind: "parent_link_sent",
+      detail: `학부모 링크 ${result.sent}명 · ${access.name} (${role === "admin" ? "운영자" : "선생님"})`,
+    });
+  }
+
+  const parts = [`${result.sent}명의 학부모께 링크를 보냈어요`];
+  if (result.failed) parts.push(`${result.failed}명 실패`);
+  if (skipped.length) parts.push(`제외: ${skipped.join(", ")}`);
+  if (result.error) parts.push(result.error);
+  revalidatePath(back);
+  revalidatePath(`/teacher/classes/${classId}`);
   redirect(
     `${back}?${result.ok ? "done" : "error"}=${encodeURIComponent(parts.join(" · "))}`,
   );

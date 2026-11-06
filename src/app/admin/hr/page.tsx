@@ -1137,5 +1137,6 @@ const LOG_LABEL: Record<string, string> = {
   student_withdrawn: "비활성",
   student_restored: "복귀",
   invite_sent: "가입 안내",
+  parent_link_sent: "학부모 링크",
   mode_changed: "상태 변경",
 };

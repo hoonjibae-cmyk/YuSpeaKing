@@ -55,6 +55,10 @@ export default async function AdminSettingsPage({
       "SOLAPI_INVITE_TEMPLATE_ID (가입 안내 템플릿)",
       !!process.env.SOLAPI_INVITE_TEMPLATE_ID,
     ],
+    [
+      "SOLAPI_PARENT_TEMPLATE_ID (학부모 링크 템플릿)",
+      !!process.env.SOLAPI_PARENT_TEMPLATE_ID,
+    ],
     ["SOLAPI_SENDER (발신번호·문자 대체용)", !!process.env.SOLAPI_SENDER],
   ];
 

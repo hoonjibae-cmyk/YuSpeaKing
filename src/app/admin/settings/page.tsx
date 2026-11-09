@@ -95,8 +95,8 @@ export default async function AdminSettingsPage({
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">AI 모델</h2>
         <p className="mt-1 text-xs text-slate-500">
-          학생 피드백·월말 리포트·PDF 문장 선별에 함께 쓰입니다. 발음 채점은
-          Azure가 맡으므로 이 설정과 무관해요.
+          학생 피드백·월말 리포트·문장 선별·사진 지문 읽기에 함께 쓰입니다. 발음
+          채점은 Azure가 맡으므로 이 설정과 무관해요.
         </p>
 
         <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">

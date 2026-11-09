@@ -16,7 +16,8 @@ type Kind =
   | "azure"
   | "claude_feedback"
   | "claude_monthly"
-  | "claude_select";
+  | "claude_select"
+  | "claude_ocr";
 
 interface UsageInput {
   model?: string;
@@ -35,6 +36,7 @@ function estimateCost(kind: Kind, u: UsageInput): number {
     case "claude_feedback":
     case "claude_monthly":
     case "claude_select":
+    case "claude_ocr":
       return (
         (u.inputTokens ?? 0) * RATES.claudeInputPerTok +
         (u.outputTokens ?? 0) * RATES.claudeOutputPerTok

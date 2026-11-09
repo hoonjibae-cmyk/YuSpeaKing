@@ -5,7 +5,45 @@ import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
 
-type Mode = "type" | "pdf";
+type Mode = "type" | "pdf" | "photo";
+
+// 사진은 올리기 전에 브라우저에서 줄인다. 휴대폰 사진은 한 장에 3~8MB 라
+// 그대로 보내면 서버 한도(4.5MB)에 걸리고, AI 도 어차피 이 정도로 줄여서 읽는다.
+const PHOTO_MAX_EDGE = 1600;
+const MAX_PHOTOS = 5;
+
+async function shrinkPhoto(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("decode"));
+      el.src = url;
+    });
+    const scale = Math.min(
+      1,
+      PHOTO_MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight),
+    );
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas");
+    ctx.fillStyle = "#fff"; // 투명 PNG 도 흰 바탕으로
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.85),
+    );
+    if (!blob) throw new Error("encode");
+    return blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 // 과제 한 개에 넣을 수 있는 최대 문장 수 (녹음 시간 상한과 맞춰 둔 값)
 const MAX_SENTENCES = 15;
@@ -23,11 +61,14 @@ export default function PassageComposer({ classId }: { classId: string }) {
   // 반 수준에 따라 문장 수를 10~15개에서 고른다
   const [sentenceLimit, setSentenceLimit] = useState(10);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 최종 지문: AI로 문장을 골랐으면 그 문장들, 아니면 원문 전체
   const passage = (selected.length ? selected.join("\n") : source).trim();
+  // 사진 읽기에서 못 읽은 단어 표시 — 그대로 등록되면 학생이 '[?]' 를 읽게 된다
+  const unreadable = passage.includes("[?]");
 
   async function onPdf(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -59,9 +100,60 @@ export default function PassageComposer({ classId }: { classId: string }) {
     }
   }
 
+  // 사진 → 본문. append 면 이미 읽어 둔 본문 뒤에 이어 붙인다 (다음 쪽 사진)
+  async function onPhotos(
+    e: React.ChangeEvent<HTMLInputElement>,
+    append: boolean,
+  ) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    if (files.length > MAX_PHOTOS) {
+      setError(`사진은 한 번에 ${MAX_PHOTOS}장까지 올릴 수 있어요.`);
+      return;
+    }
+    if (files.some((f) => f.type && !f.type.startsWith("image/"))) {
+      setError("사진 파일만 올릴 수 있어요.");
+      return;
+    }
+    setError(null);
+    setPhotoLoading(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) {
+        let blob: Blob;
+        try {
+          blob = await shrinkPhoto(f);
+        } catch {
+          throw new Error(
+            "이 사진 형식은 열 수 없어요. JPG·PNG 로 바꾸거나 휴대폰에서 바로 찍어 올려 주세요.",
+          );
+        }
+        fd.append("files", blob, "page.jpg");
+      }
+      const res = await fetch("/api/teacher/extract-image", {
+        method: "POST",
+        body: fd,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "사진 처리 실패");
+      const text = String(j.text ?? "");
+      setSource((prev) =>
+        append && prev.trim() ? `${prev.trim()}\n\n${text}` : text,
+      );
+      setSelected([]);
+      setExcluded([]);
+      setAiRan(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "사진 처리 실패");
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
   async function runAI() {
     if (passageSourceEmpty()) {
-      setError("먼저 지문을 입력하거나 PDF를 올려 주세요.");
+      setError("먼저 지문을 입력하거나 PDF·사진을 올려 주세요.");
       return;
     }
     setError(null);
@@ -145,7 +237,58 @@ export default function PassageComposer({ classId }: { classId: string }) {
         >
           📄 PDF 업로드
         </button>
+        <button
+          type="button"
+          onClick={() => setMode("photo")}
+          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+            mode === "photo"
+              ? "border-brand bg-brand-light text-brand"
+              : "border-slate-300 text-slate-500 hover:bg-slate-50"
+          }`}
+        >
+          📷 사진 업로드
+        </button>
       </div>
+
+      {mode === "photo" && (
+        <div className="space-y-1.5">
+          <label
+            className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 py-4 text-sm font-medium text-slate-600 transition hover:border-brand hover:bg-brand-light hover:text-brand ${
+              photoLoading ? "pointer-events-none opacity-60" : ""
+            }`}
+          >
+            {photoLoading
+              ? "사진에서 본문 읽는 중… (10~30초)"
+              : `📷 교과서 사진 선택하기 (최대 ${MAX_PHOTOS}장)`}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => onPhotos(e, false)}
+              disabled={photoLoading}
+              className="hidden"
+            />
+          </label>
+          {source.trim() && !photoLoading && (
+            <label className="block cursor-pointer text-center text-xs text-brand hover:underline">
+              + 다음 쪽 사진 이어 붙이기
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => onPhotos(e, true)}
+                className="hidden"
+              />
+            </label>
+          )}
+          <p className="text-[11px] text-slate-400">
+            본문이 화면에 꽉 차게, 그림자 없이 반듯하게 찍어 주세요. 여러 쪽이면
+            순서대로 골라 주세요. AI 가 옮겨 적은 글이니{" "}
+            <b>아래에서 한 번 확인</b>해 주세요 — 읽지 못한 단어는 [?] 로
+            표시돼요.
+          </p>
+        </div>
+      )}
 
       {mode === "pdf" && (
         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 py-4 text-sm font-medium text-slate-600 transition hover:border-brand hover:bg-brand-light hover:text-brand">
@@ -169,11 +312,13 @@ export default function PassageComposer({ classId }: { classId: string }) {
           setExcluded([]);
           setAiRan(false);
         }}
-        rows={mode === "pdf" ? 5 : 6}
+        rows={mode === "type" ? 6 : 5}
         placeholder={
           mode === "pdf"
             ? "PDF를 올리면 여기에 본문이 채워져요. 필요하면 직접 수정할 수 있어요."
-            : `교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 AI가 핵심 ${sentenceLimit}문장을 골라줍니다.`
+            : mode === "photo"
+              ? "사진을 올리면 여기에 본문이 채워져요. 필요하면 직접 수정할 수 있어요."
+              : `교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 AI가 핵심 ${sentenceLimit}문장을 골라줍니다.`
         }
         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
       />
@@ -331,7 +476,12 @@ export default function PassageComposer({ classId }: { classId: string }) {
           제출(녹음·분석)은 학생당 <b>1회</b>로 제한돼요.
         </p>
 
-        {passage ? (
+        {unreadable ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            ⚠️ 사진에서 읽지 못한 단어(<b>[?]</b>)가 남아 있어요. 교과서를 보고
+            고쳐 주셔야 등록할 수 있어요.
+          </p>
+        ) : passage ? (
           <p className="text-[11px] text-slate-400">
             최종 지문 {passage.split("\n").filter(Boolean).length}문장 · 등록 시
             원어민 샘플 음성이 자동 생성돼요.
@@ -342,7 +492,7 @@ export default function PassageComposer({ classId }: { classId: string }) {
           </p>
         )}
 
-        {passage && (
+        {passage && !unreadable && (
           <SubmitButton
             pendingText="샘플음성 만드는 중… (몇 초 걸려요)"
             className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark"

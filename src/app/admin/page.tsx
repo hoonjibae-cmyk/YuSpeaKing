@@ -70,6 +70,8 @@ export default async function AdminDashboard({
     azure: "발음평가(Azure)",
     claude_feedback: "피드백(Claude)",
     claude_monthly: "월말리포트(Claude)",
+    claude_select: "문장선별(Claude)",
+    claude_ocr: "사진지문(Claude)",
   };
   const usdKrw = 1350;
 

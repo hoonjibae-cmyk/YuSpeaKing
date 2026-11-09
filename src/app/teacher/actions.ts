@@ -1161,6 +1161,13 @@ export async function createAssignment(formData: FormData) {
   if (!classId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
   }
+  if (passageText.includes("[?]")) {
+    redirect(
+      `/teacher/classes/${classId}?error=${encodeURIComponent(
+        "지문에 읽지 못한 단어([?])가 남아 있어요. 고친 뒤 등록해 주세요.",
+      )}`,
+    );
+  }
 
   const { data: assignment, error } = await db
     .from("assignments")

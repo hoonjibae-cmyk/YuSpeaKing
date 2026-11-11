@@ -113,7 +113,7 @@ ${weak}
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1200,
+      max_tokens: 16000,
       system,
       messages: [{ role: "user", content: user }],
     }),

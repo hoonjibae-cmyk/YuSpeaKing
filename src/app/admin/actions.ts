@@ -18,6 +18,7 @@ import { generateClassCode } from "@/lib/class-code";
 import { applyClassHandover } from "@/lib/transfers";
 import { todayKST } from "@/lib/date";
 import { runFullSync, syncLinkedClass } from "@/lib/hr/sync";
+import { regenerateFeedback, BROKEN_FEEDBACK } from "@/lib/ai/evaluate";
 
 // 운영자가 특정 선생님으로 대행 시작 → 선생님 대시보드로 이동
 export async function impersonateTeacher(formData: FormData) {
@@ -570,4 +571,50 @@ export async function sendWeeklyReportNow() {
     "/admin/settings?saved=" +
       encodeURIComponent(`sent:${emails.length}${note}`),
   );
+}
+
+// ---------- 피드백 다시 만들기 ----------
+//
+// 피드백 생성이 실패해 '정리하는 중' 이나 예전 기본 문구가 남은 제출을 찾아,
+// 저장된 점수로 피드백만 다시 만든다 (녹음을 다시 채점하지 않는다).
+// 한 번 누를 때 FEEDBACK_BATCH 건씩 — 한 건에 20~40초 걸려 함수 실행시간을 넘기지 않게.
+const FEEDBACK_BATCH = 8;
+const FEEDBACK_CONCURRENCY = 4;
+
+export async function regenerateBrokenFeedback() {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("submissions")
+    .select("id")
+    .eq("status", "evaluated")
+    .in("student_feedback", BROKEN_FEEDBACK)
+    .order("created_at", { ascending: false })
+    .limit(FEEDBACK_BATCH);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  if (ids.length === 0) {
+    redirect(`/admin?fb=${encodeURIComponent("다시 만들 피드백이 없어요")}`);
+  }
+
+  let ok = 0;
+  let failed = 0;
+  const queue = [...ids];
+  await Promise.all(
+    Array.from({ length: FEEDBACK_CONCURRENCY }, async () => {
+      for (let id = queue.shift(); id; id = queue.shift()) {
+        try {
+          await regenerateFeedback(id);
+          ok++;
+        } catch (e) {
+          failed++;
+          console.error("[피드백 다시 만들기] 실패:", id, e);
+        }
+      }
+    }),
+  );
+
+  revalidatePath("/admin");
+  const msg = [`피드백 ${ok}건을 다시 만들었어요`];
+  if (failed) msg.push(`${failed}건 실패 — 잠시 뒤 다시 눌러 주세요`);
+  redirect(`/admin?fb=${encodeURIComponent(msg.join(" · "))}`);
 }

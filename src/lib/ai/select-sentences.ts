@@ -89,7 +89,7 @@ export async function selectSentences(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 3000,
+      max_tokens: 16000,
       system,
       messages: [{ role: "user", content: user }],
     }),

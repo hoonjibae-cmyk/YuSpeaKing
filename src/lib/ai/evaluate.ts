@@ -5,6 +5,69 @@ import { assessPronunciationOpenAI } from "./pronunciation-openai";
 import type { AzureScores } from "../types";
 import { generateFeedback } from "./feedback";
 
+// 피드백이 제대로 만들어지지 않았을 때 학생 화면에 남는 문구.
+//  · INTERIM  : 점수 저장 직후 넣는 임시 문구 (피드백 생성이 실패하면 그대로 남는다)
+//  · CANNED   : 예전 코드가 응답을 못 읽었을 때 넣던 기본 문구
+// 이 문구가 남은 제출을 찾아 피드백을 다시 만든다.
+export const FEEDBACK_INTERIM =
+  "채점이 끝났어요! 자세한 피드백을 정리하는 중이에요 🙂";
+export const FEEDBACK_CANNED =
+  "녹음이 잘 제출되었어요! 다음에도 또박또박 읽어봐요 🙂";
+export const BROKEN_FEEDBACK = [FEEDBACK_INTERIM, FEEDBACK_CANNED];
+
+// 저장된 점수로 피드백만 다시 만든다 (녹음을 다시 채점하지 않는다).
+// 실패하면 예외를 던진다.
+export async function regenerateFeedback(submissionId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: sub } = await admin
+    .from("submissions")
+    .select("id, assignment_id, student_id, azure_scores")
+    .eq("id", submissionId)
+    .single();
+  if (!sub) throw new Error("제출을 찾을 수 없어요");
+  if (!sub.azure_scores) throw new Error("저장된 점수가 없어요");
+
+  const [{ data: assignment }, { data: student }, { count: subCount }] =
+    await Promise.all([
+      admin
+        .from("assignments")
+        .select("passage_text")
+        .eq("id", sub.assignment_id)
+        .single(),
+      admin
+        .from("students")
+        .select("name, approved_at")
+        .eq("id", sub.student_id)
+        .maybeSingle(),
+      admin
+        .from("submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("student_id", sub.student_id),
+    ]);
+  if (!assignment) throw new Error("과제를 찾을 수 없어요");
+
+  // 등록일·누적 제출 횟수를 함께 전달해 신입생에게 과거 이력을 전제한
+  // 코멘트가 나가지 않도록 한다
+  const feedback = await generateFeedback(
+    sub.azure_scores as AzureScores,
+    assignment.passage_text,
+    {
+      // 이름을 주지 않으면 모델이 인식된 발화에서 이름처럼 보이는 말을
+      // 집어다 쓴다 (학생이 읽기 전에 자기 소개를 하면 특히 그렇다)
+      name: (student?.name as string | null) ?? null,
+      approvedAt: (student?.approved_at as string | null) ?? null,
+      submissionCount: subCount ?? undefined,
+    },
+  );
+  await admin
+    .from("submissions")
+    .update({
+      student_feedback: feedback.studentFeedback,
+      teacher_feedback: feedback.teacherFeedback,
+    })
+    .eq("id", submissionId);
+}
+
 // 평가 엔진 선택: Azure 가 있으면 정밀 발음평가, 없거나 실패하면 OpenAI(Whisper) 대체.
 //
 // 키가 없을 때뿐 아니라 '키는 있는데 호출이 실패하는' 경우(구독 만료·한도 초과·
@@ -78,41 +141,16 @@ export async function evaluateSubmission(submissionId: string): Promise<void> {
         audio_seconds: audioSeconds,
         // 쿠폰 집계를 가볍게 하려고 완성도는 칼럼으로도 저장한다
         completeness: scores.completeness,
-        student_feedback:
-          "채점이 끝났어요! 자세한 피드백을 정리하는 중이에요 🙂",
+        student_feedback: FEEDBACK_INTERIM,
         error_message: null,
       })
       .eq("id", submissionId);
 
-    // 4) Claude 2단 피드백 (등록일·누적 제출 횟수를 함께 전달해
-    //    신입생에게 과거 이력을 전제한 코멘트가 나가지 않도록 한다)
-    //    여기서 실패해도 점수는 이미 저장되어 있다.
+    // 4) Claude 2단 피드백. 여기서 실패해도 점수는 이미 저장되어 있다.
+    //    (실패하면 학생 화면에는 위의 '정리하는 중' 문구가 남고, 운영자 화면의
+    //     '피드백 다시 만들기' 로 점수는 그대로 둔 채 피드백만 새로 만든다)
     try {
-      const [{ data: student }, { count: subCount }] = await Promise.all([
-        admin
-          .from("students")
-          .select("name, approved_at")
-          .eq("id", submission.student_id)
-          .maybeSingle(),
-        admin
-          .from("submissions")
-          .select("id", { count: "exact", head: true })
-          .eq("student_id", submission.student_id),
-      ]);
-      const feedback = await generateFeedback(scores, assignment.passage_text, {
-        // 이름을 주지 않으면 모델이 인식된 발화에서 이름처럼 보이는 말을
-        // 집어다 쓴다 (학생이 읽기 전에 자기 소개를 하면 특히 그렇다)
-        name: (student?.name as string | null) ?? null,
-        approvedAt: (student?.approved_at as string | null) ?? null,
-        submissionCount: subCount ?? undefined,
-      });
-      await admin
-        .from("submissions")
-        .update({
-          student_feedback: feedback.studentFeedback,
-          teacher_feedback: feedback.teacherFeedback,
-        })
-        .eq("id", submissionId);
+      await regenerateFeedback(submissionId);
     } catch (e) {
       console.error("[평가] 피드백 생성 실패(점수는 저장됨):", e);
     }

@@ -8,7 +8,9 @@ import {
   rejectTeacher,
   setTeacherRole,
   deleteTeacher,
+  regenerateBrokenFeedback,
 } from "./actions";
+import { BROKEN_FEEDBACK } from "@/lib/ai/evaluate";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import CopyButton from "@/components/CopyButton";
@@ -18,11 +20,13 @@ import { kstWeekWindow } from "@/lib/date";
 import { unlinkedClassCount } from "@/lib/hr/sync";
 
 export const dynamic = "force-dynamic";
+// '피드백 다시 만들기' 가 여러 건을 한 번에 처리한다
+export const maxDuration = 300;
 
 export default async function AdminDashboard({
   searchParams,
 }: {
-  searchParams: { week?: string };
+  searchParams: { week?: string; fb?: string };
 }) {
   const meUser = await requireAdmin();
   const admin = createAdminClient();
@@ -40,6 +44,7 @@ export default async function AdminDashboard({
     assignmentsRes,
     submissionsRes,
     unlinkedClasses,
+    brokenFeedbackRes,
   ] = await Promise.all([
     admin.from("teachers").select("id, name, email, role, status"),
     admin.from("classes").select("id, teacher_id").is("archived_at", null),
@@ -49,7 +54,14 @@ export default async function AdminDashboard({
     admin.from("submissions").select("assignment_id, overall_score, status"),
     // Student Card 반과 이어지지 않은 반 수 (알림용)
     unlinkedClassCount(),
+    // 피드백 생성이 실패해 임시·기본 문구가 남은 제출
+    admin
+      .from("submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "evaluated")
+      .in("student_feedback", BROKEN_FEEDBACK),
   ]);
+  const brokenFeedback = brokenFeedbackRes.count ?? 0;
 
   // 이번 달 AI 비용
   const now = new Date();
@@ -307,6 +319,34 @@ export default async function AdminDashboard({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* 피드백이 제대로 만들어지지 않은 제출 */}
+      {searchParams.fb && (
+        <p className="mt-6 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          {decodeURIComponent(searchParams.fb)}
+        </p>
+      )}
+      {brokenFeedback > 0 && (
+        <section className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="text-sm text-amber-800">
+            ⚠️ AI 피드백이 제대로 만들어지지 않은 제출이{" "}
+            <b>{brokenFeedback}건</b> 있어요.
+            <span className="mt-0.5 block text-xs text-amber-700">
+              학생에게 &ldquo;녹음이 잘 제출되었어요!&rdquo; 같은 기본 문구만
+              보이는 제출이에요. 점수는 그대로 두고 피드백만 다시 만듭니다 (한
+              번에 8건씩, 1~2분).
+            </span>
+          </div>
+          <form action={regenerateBrokenFeedback}>
+            <SubmitButton
+              pendingText="다시 만드는 중… (1~2분)"
+              className="whitespace-nowrap rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              🔁 피드백 다시 만들기
+            </SubmitButton>
+          </form>
         </section>
       )}
 

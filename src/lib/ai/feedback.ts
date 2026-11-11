@@ -134,9 +134,42 @@ teacherFeedback (교사용):
 
   const user = buildFeedbackPrompt(scores, referenceText, context);
 
+  // 한 번 실패하면 한 번 더 시도한다. 그래도 안 되면 예외를 던진다 — 예전에는
+  // 여기서 '녹음이 잘 제출되었어요!' 같은 기본 문구를 넣어 내보냈는데, 그러면
+  // 학생은 성의 없는 피드백을 받고 선생님은 실패한 줄도 모른다.
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await requestFeedback(key, model, system, user);
+    } catch (e) {
+      lastError = e;
+      console.error(`[피드백] ${attempt}차 생성 실패:`, e);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("피드백 생성 실패");
+}
+
+// 응답 형식을 JSON 스키마로 고정한다. 모델이 설명을 덧붙이거나 따옴표를
+// 잘못 써서 JSON 이 깨지는 일이 없다.
+const FEEDBACK_SCHEMA = {
+  type: "object",
+  properties: {
+    studentFeedback: { type: "string" },
+    teacherFeedback: { type: "string" },
+  },
+  required: ["studentFeedback", "teacherFeedback"],
+  additionalProperties: false,
+} as const;
+
+async function requestFeedback(
+  key: string,
+  model: string,
+  system: string,
+  user: string,
+): Promise<TwoTierFeedback> {
   // 무한 대기 방지용 상한 (초과 시 점수만 저장되고 피드백은 생략된다)
   const ac = new AbortController();
-  const cutoff = setTimeout(() => ac.abort(), 60000);
+  const cutoff = setTimeout(() => ac.abort(), 90_000);
   let res: Response;
   try {
     res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -148,9 +181,14 @@ teacherFeedback (교사용):
       },
       body: JSON.stringify({
         model,
-        max_tokens: 2500,
+        // 요즘 모델은 답을 쓰기 전에 먼저 생각(thinking)하고, 그 분량도 이 한도에서
+        // 깎인다. 예전 값(2500)은 생각만 하다 한도가 끝나 빈 응답이 오는 일이 있었다.
+        max_tokens: 16000,
         system,
         messages: [{ role: "user", content: user }],
+        output_config: {
+          format: { type: "json_schema", schema: FEEDBACK_SCHEMA },
+        },
       }),
       signal: ac.signal,
     });
@@ -165,6 +203,7 @@ teacherFeedback (교사용):
 
   const data = (await res.json()) as {
     content?: Array<{ type: string; text?: string }>;
+    stop_reason?: string;
     usage?: { input_tokens?: number; output_tokens?: number };
   };
   await logUsage("claude_feedback", {
@@ -172,17 +211,28 @@ teacherFeedback (교사용):
     inputTokens: data.usage?.input_tokens,
     outputTokens: data.usage?.output_tokens,
   });
-  const text =
-    data.content
-      ?.map((c) => c.text ?? "")
-      .join("")
-      .trim() ?? "";
 
-  return parseFeedback(text);
+  if (data.stop_reason === "refusal") {
+    throw new Error("Claude 가 피드백 생성을 거절했어요 (refusal)");
+  }
+  const text = (data.content ?? [])
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
+    .join("")
+    .trim();
+
+  const parsed = parseFeedback(text);
+  if (!parsed.studentFeedback || !parsed.teacherFeedback) {
+    throw new Error(
+      `피드백 응답을 읽지 못했어요 (stop_reason=${data.stop_reason ?? "?"}, ${text.length}자)`,
+    );
+  }
+  return parsed;
 }
 
+// 스키마로 형식을 고정했지만, 한도에 걸려 끝이 잘린 응답에서도 학생용만큼은
+// 건질 수 있게 필드 값을 따로 뽑아 본다. 못 건지면 빈 값 — 기본 문구로 채우지 않는다.
 function parseFeedback(text: string): TwoTierFeedback {
-  // 1) 정상 JSON 파싱 시도 (코드펜스 등 대응)
   const match = text.match(/\{[\s\S]*\}/);
   const raw = match ? match[0] : text;
   try {
@@ -192,20 +242,9 @@ function parseFeedback(text: string): TwoTierFeedback {
       teacherFeedback: String(obj.teacherFeedback ?? "").trim(),
     };
   } catch {
-    // 2) 파싱 실패(예: 토큰 초과로 JSON 끝이 잘림) → 필드 값만 정규식으로 구제
-    const student = extractField(text, "studentFeedback");
-    const teacher = extractField(text, "teacherFeedback");
-    if (student || teacher) {
-      return {
-        studentFeedback:
-          student || "녹음이 잘 제출되었어요! 다음에도 또박또박 읽어봐요 🙂",
-        teacherFeedback: teacher || student || "",
-      };
-    }
-    // 3) 그래도 안 되면 원본 기호 노출 방지: 기본 학생 메시지 + 정리된 텍스트
     return {
-      studentFeedback: "녹음이 잘 제출되었어요! 다음에도 또박또박 읽어봐요 🙂",
-      teacherFeedback: text.replace(/[{}"]/g, "").trim(),
+      studentFeedback: extractField(text, "studentFeedback"),
+      teacherFeedback: extractField(text, "teacherFeedback"),
     };
   }
 }

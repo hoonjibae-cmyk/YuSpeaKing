@@ -7,11 +7,13 @@ import type { AzureScores, SubmissionStatus } from "@/lib/types";
 import {
   updateSubmissionReview,
   reevaluateSubmission,
+  regenerateSubmissionFeedback,
   resetAttempts,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import WordHighlights from "@/components/WordHighlights";
+import { BROKEN_FEEDBACK } from "@/lib/ai/evaluate";
 
 export const maxDuration = 300;
 
@@ -24,8 +26,10 @@ const STATUS_LABEL: Record<SubmissionStatus, string> = {
 
 export default async function AssignmentDashboard({
   params,
+  searchParams,
 }: {
   params: { assignmentId: string };
+  searchParams: { error?: string };
 }) {
   const { db, effectiveId, isImpersonating, actingName } =
     await getTeacherContext();
@@ -109,6 +113,11 @@ export default async function AssignmentDashboard({
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
+      {searchParams.error && (
+        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          {decodeURIComponent(searchParams.error)}
+        </p>
+      )}
       {isImpersonating && actingName && (
         <ImpersonationBanner name={actingName} />
       )}
@@ -257,6 +266,33 @@ export default async function AssignmentDashboard({
                         <p className="mt-1 whitespace-pre-wrap">
                           {sub.student_feedback}
                         </p>
+                        {BROKEN_FEEDBACK.includes(sub.student_feedback) && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+                            <span className="text-xs text-amber-700">
+                              ⚠️ AI 피드백이 제대로 만들어지지 않았어요.
+                            </span>
+                            {canManage && (
+                              <form action={regenerateSubmissionFeedback}>
+                                <input
+                                  type="hidden"
+                                  name="assignmentId"
+                                  value={assignmentId}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="submissionId"
+                                  value={sub.id}
+                                />
+                                <SubmitButton
+                                  pendingText="만드는 중… (20~40초)"
+                                  className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-700 hover:bg-amber-50"
+                                >
+                                  🔁 피드백 다시 만들기
+                                </SubmitButton>
+                              </form>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -77,7 +77,7 @@ export async function extractPassageFromImages(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 4000,
+      max_tokens: 16000,
       system,
       messages: [{ role: "user", content }],
     }),

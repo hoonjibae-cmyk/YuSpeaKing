@@ -16,7 +16,7 @@ import { synthesizeSpeech } from "@/lib/ai/tts";
 import { normalizeVoice } from "@/lib/tts-voices";
 import { hashPassword } from "@/lib/student-session";
 import { notifyTeacher } from "@/lib/slack";
-import { evaluateSubmission } from "@/lib/ai/evaluate";
+import { evaluateSubmission, regenerateFeedback } from "@/lib/ai/evaluate";
 import { gatherMonthly } from "@/lib/monthly";
 import { generateMonthlyReportDraft } from "@/lib/ai/monthly-report";
 import { appOrigin } from "@/lib/app-url";
@@ -1228,6 +1228,32 @@ export async function resetAttempts(formData: FormData) {
     .update({ attempt_count: 0 })
     .eq("id", submissionId);
   revalidatePath(`/teacher/assignments/${assignmentId}`);
+}
+
+// 저장된 점수로 피드백만 다시 만든다 (녹음은 다시 채점하지 않는다)
+export async function regenerateSubmissionFeedback(formData: FormData) {
+  const { db } = await getTeacherContext();
+  const assignmentId = String(formData.get("assignmentId") || "");
+  const submissionId = String(formData.get("submissionId") || "");
+  const back = `/teacher/assignments/${assignmentId}`;
+
+  // 볼 수 있는 제출인지 정책(RLS)으로 확인한다
+  const { data: sub } = await db
+    .from("submissions")
+    .select("id")
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (!sub) redirect(back);
+
+  try {
+    await regenerateFeedback(submissionId);
+  } catch (e) {
+    console.error("[피드백 다시 만들기] 실패:", submissionId, e);
+    redirect(
+      `${back}?error=${encodeURIComponent("피드백을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요.")}`,
+    );
+  }
+  revalidatePath(back);
 }
 
 // 평가 실패/재시도 시 재평가

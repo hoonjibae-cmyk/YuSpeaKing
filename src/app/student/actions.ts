@@ -209,6 +209,51 @@ export async function studentLogin(formData: FormData) {
   redirect("/student/home");
 }
 
+// ---------- 비밀번호 바꾸기 (로그인한 학생 본인) ----------
+// 지금 비밀번호를 한 번 더 확인한다. 로그인된 채 자리를 비운 사이 다른 사람이
+// 바꿔 버리는 걸 막기 위해서다.
+export async function changeStudentPassword(formData: FormData) {
+  const session = await getActiveStudent();
+  if (!session) redirect("/student");
+
+  const current = String(formData.get("current") || "");
+  const password = String(formData.get("password") || "");
+  const passwordConfirm = String(formData.get("password_confirm") || "");
+  const fail = (msg: string): never =>
+    redirect(`/student/password?error=${encodeURIComponent(msg)}`);
+
+  if (!current || !password) fail("빈칸을 모두 채워 주세요");
+  // 가입할 때와 같은 기준
+  if (password.length < 4) fail("새 비밀번호는 4자 이상이에요");
+  if (password.length > 72) fail("새 비밀번호가 너무 길어요");
+  if (password !== passwordConfirm) fail("새 비밀번호가 서로 달라요");
+
+  const admin = createAdminClient();
+  const { data: student } = await admin
+    .from("students")
+    .select("id, password_hash")
+    .eq("id", session.studentId)
+    .maybeSingle();
+  if (!student?.password_hash) redirect("/student");
+  if (!verifyPassword(current, student.password_hash)) {
+    fail("지금 비밀번호가 맞지 않아요");
+  }
+  if (password === current) {
+    fail("지금 비밀번호와 다른 것으로 정해 주세요");
+  }
+
+  const { error } = await admin
+    .from("students")
+    .update({ password_hash: hashPassword(password) })
+    .eq("id", session.studentId);
+  if (error) {
+    console.error("[학생] 비밀번호 변경 실패:", error);
+    fail("비밀번호를 바꾸지 못했어요. 잠시 후 다시 해 주세요");
+  }
+
+  redirect("/student/home?pw=done");
+}
+
 export async function studentLogout() {
   clearStudentSession();
   redirect("/student");

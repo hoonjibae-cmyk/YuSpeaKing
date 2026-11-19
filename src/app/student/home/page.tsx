@@ -12,7 +12,7 @@ import { Mascot } from "@/components/Mascots";
 export default async function StudentHome({
   searchParams,
 }: {
-  searchParams: { redeemed?: string };
+  searchParams: { redeemed?: string; pw?: string };
 }) {
   const session = await requireStudent();
   const admin = createAdminClient();
@@ -34,7 +34,9 @@ export default async function StudentHome({
       // azure_scores 는 단어별 상세까지 들어 있어 무겁다 → 완성도 칼럼만 읽는다
       admin
         .from("submissions")
-        .select("assignment_id, status, overall_score, completeness, created_at")
+        .select(
+          "assignment_id, status, overall_score, completeness, created_at",
+        )
         .eq("student_id", session.studentId),
       admin
         .from("students")
@@ -75,7 +77,7 @@ export default async function StudentHome({
 
   // 마감이 지난 과제는 '지난 과제 목록'으로. 홈에는 진행 중(마감 전/마감 없음)만.
   const assignments = (allAssignments ?? []).filter(
-    (a) => !a.due_date || a.due_date >= today
+    (a) => !a.due_date || a.due_date >= today,
   );
   const pastCount = (allAssignments ?? []).length - assignments.length;
 
@@ -92,7 +94,7 @@ export default async function StudentHome({
     for (const s of (allSubs ?? []) as { assignment_id: string }[]) {
       submitCountByAssignment.set(
         s.assignment_id,
-        (submitCountByAssignment.get(s.assignment_id) ?? 0) + 1
+        (submitCountByAssignment.get(s.assignment_id) ?? 0) + 1,
       );
     }
   }
@@ -101,8 +103,9 @@ export default async function StudentHome({
   // ---- 게임화: 성취 배지 & 연속 제출 스트릭 ----
   const submittedCount = subs?.length ?? 0;
   const bestScore = (subs ?? []).reduce(
-    (m, s) => (s.overall_score != null ? Math.max(m, Number(s.overall_score)) : m),
-    0
+    (m, s) =>
+      s.overall_score != null ? Math.max(m, Number(s.overall_score)) : m,
+    0,
   );
   // 지금 이어지고 있는 연속 제출(최신 과제부터) — 실시간 응원 문구용
   let currentStreak = 0;
@@ -124,20 +127,50 @@ export default async function StudentHome({
 
   // 전체 배지 목록(획득/미획득 모두 표시 — 쿠폰칸처럼 미리 보여주기)
   const ALL_BADGES = [
-    { key: "first", emoji: "🎉", label: "첫 스피킹", earned: submittedCount >= 1 },
+    {
+      key: "first",
+      emoji: "🎉",
+      label: "첫 스피킹",
+      earned: submittedCount >= 1,
+    },
     { key: "streak5", emoji: "⚡", label: "5회 연속", earned: bestStreak >= 5 },
-    { key: "streak10", emoji: "🔥", label: "10회 연속", earned: bestStreak >= 10 },
-    { key: "streak20", emoji: "🌟", label: "20회 연속", earned: bestStreak >= 20 },
-    { key: "streak30", emoji: "👑", label: "30회 연속", earned: bestStreak >= 30 },
-    { key: "score80", emoji: "🥉", label: "80점 클럽", earned: bestScore >= 80 },
-    { key: "score90", emoji: "🏆", label: "90점 클럽", earned: bestScore >= 90 },
+    {
+      key: "streak10",
+      emoji: "🔥",
+      label: "10회 연속",
+      earned: bestStreak >= 10,
+    },
+    {
+      key: "streak20",
+      emoji: "🌟",
+      label: "20회 연속",
+      earned: bestStreak >= 20,
+    },
+    {
+      key: "streak30",
+      emoji: "👑",
+      label: "30회 연속",
+      earned: bestStreak >= 30,
+    },
+    {
+      key: "score80",
+      emoji: "🥉",
+      label: "80점 클럽",
+      earned: bestScore >= 80,
+    },
+    {
+      key: "score90",
+      emoji: "🏆",
+      label: "90점 클럽",
+      earned: bestScore >= 90,
+    },
     { key: "score100", emoji: "⭐", label: "만점!", earned: bestScore >= 100 },
   ];
   const seenBadges = Array.isArray(studentRow?.seen_badges)
     ? studentRow!.seen_badges!
     : [];
   const newBadges = ALL_BADGES.filter(
-    (b) => b.earned && !seenBadges.includes(b.key)
+    (b) => b.earned && !seenBadges.includes(b.key),
   ).map((b) => ({ key: b.key, emoji: b.emoji, label: b.label }));
 
   // ---- 쿠폰함: 완성도 90% 이상으로 제출한 과제 1개당 쿠폰 1개 ----
@@ -177,6 +210,12 @@ export default async function StudentHome({
               {session.number != null ? `${session.number}번 ` : ""}
               {session.name}
             </p>
+            <Link
+              href="/student/password"
+              className="text-xs text-slate-400 hover:text-brand hover:underline"
+            >
+              🔑 비밀번호 바꾸기
+            </Link>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -200,6 +239,12 @@ export default async function StudentHome({
           </form>
         </div>
       </header>
+
+      {searchParams.pw === "done" && (
+        <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          ✅ 비밀번호를 바꿨어요. 다음부터는 새 비밀번호로 들어와요.
+        </p>
+      )}
 
       {/* 공지사항 */}
       {notices.length > 0 && (
@@ -375,8 +420,9 @@ export default async function StudentHome({
               </ConfirmSubmitButton>
             </form>
             <p className="mt-2 text-[11px] font-medium text-red-500">
-              ⚠️ 이 버튼은 <b>데스크 선생님이 상품을 준 뒤</b>에 누르는 버튼이에요.
-              누르면 쿠폰함이 <b>0개로 초기화</b>돼요. 학생은 누르지 마세요!
+              ⚠️ 이 버튼은 <b>데스크 선생님이 상품을 준 뒤</b>에 누르는
+              버튼이에요. 누르면 쿠폰함이 <b>0개로 초기화</b>돼요. 학생은 누르지
+              마세요!
             </p>
           </div>
         )}
@@ -392,7 +438,10 @@ export default async function StudentHome({
         )}
         {assignments.map((a) => {
           const status = subMap.get(a.id);
-          const done = status === "submitted" || status === "evaluating" || status === "evaluated";
+          const done =
+            status === "submitted" ||
+            status === "evaluating" ||
+            status === "evaluated";
           return (
             <Link
               key={a.id}

@@ -495,7 +495,7 @@ export default async function ClassDetailPage({
             <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
               🔑 비밀번호가 재설정됐어요 — 아이디 <b>{uname}</b> · 임시 비밀번호{" "}
               <b className="font-mono">{temp}</b> (학생에게 전달하고, 로그인 후
-              바꾸도록 안내해 주세요)
+              이름 아래 <b>🔑 비밀번호 바꾸기</b>에서 바꾸도록 안내해 주세요)
             </p>
           );
         })()}

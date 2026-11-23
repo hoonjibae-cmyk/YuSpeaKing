@@ -12,7 +12,7 @@
 |---|---|
 | 프론트/호스팅 | Next.js (App Router) · Vercel |
 | DB · 인증 · 스토리지 | Supabase (Postgres · Auth · Storage) |
-| 샘플 음성 (TTS) | OpenAI `gpt-4o-mini-tts` (기본) · Google Cloud WaveNet (선택) |
+| 샘플 음성 (TTS) | Google Cloud WaveNet F (새 과제 기본) · OpenAI `gpt-4o-mini-tts` (선택) |
 | 발음 채점 | Azure Speech — Pronunciation Assessment |
 | 피드백 생성 | Anthropic Claude |
 
@@ -36,8 +36,9 @@ npm run dev
 
 ## 배포 (Vercel)
 
-샘플음성은 OpenAI를 기본값으로 유지하며, 과제 생성 시 미국 영어 WaveNet 10종 중
-하나를 선택할 수도 있습니다. WaveNet은 같은 목소리로 일반 낭독과 강제 쉼 없는
+Google 음성이 활성화된 환경에서는 새 과제의 기본 음성이 미국 영어 WaveNet F입니다.
+WaveNet 10종 또는 기존 OpenAI 음성 중에서 선택할 수 있습니다.
+WaveNet은 같은 목소리로 일반 낭독과 강제 쉼 없는
 0.7배속 MP3를 함께 저장합니다. 운영 인증·환경변수·검증 방법은
 [`docs/WAVENET-PRODUCTION.md`](docs/WAVENET-PRODUCTION.md)를 참고하세요.
 

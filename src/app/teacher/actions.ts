@@ -13,7 +13,7 @@ import { generateClassCode } from "@/lib/class-code";
 import { getSyncMode } from "@/lib/hr/sync";
 import { todayKST } from "@/lib/date";
 import { synthesizeSpeech } from "@/lib/ai/tts";
-import { buildWaveNetRequests, isWaveNetVoice, selectSampleVoice, waveNetTestEnabled } from "@/lib/sample-voices";
+import { buildWaveNetRequests, defaultNewSampleVoice, isWaveNetVoice, selectSampleVoice, waveNetTestEnabled } from "@/lib/sample-voices";
 import { synthesizeWaveNetPair } from "@/lib/ai/wavenet";
 import { publishSamplePair } from "@/lib/ai/sample-pair";
 import { hashPassword } from "@/lib/student-session";
@@ -1182,7 +1182,9 @@ export async function createAssignment(formData: FormData) {
   const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
   let voice: string;
   try {
-    voice = selectSampleVoice(String(formData.get("voice") || ""), waveNetTestEnabled());
+    const enabled = waveNetTestEnabled();
+    const requestedVoice = String(formData.get("voice") || "").trim();
+    voice = selectSampleVoice(requestedVoice || defaultNewSampleVoice(enabled), enabled);
     if (isWaveNetVoice(voice)) buildWaveNetRequests(passageText, voice);
   } catch (e) {
     redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(e instanceof Error ? e.message : "음성 선택을 확인하세요")}`);

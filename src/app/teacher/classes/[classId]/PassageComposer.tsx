@@ -450,7 +450,7 @@ export default function PassageComposer({ classId, wavenetEnabled = false }: { c
         />
         <label className="block text-sm text-slate-500">
           🎙️ 샘플음성 목소리
-          <SampleVoiceSelect enabled={wavenetEnabled} />
+          <SampleVoiceSelect enabled={wavenetEnabled} newAssignment />
           {wavenetEnabled && <span className="mt-1 block text-xs text-slate-400">WaveNet은 고른 목소리로 일반 낭독과 자연스러운 0.7배속을 함께 만들어요.</span>}
         </label>
         <div className="flex flex-wrap gap-4">

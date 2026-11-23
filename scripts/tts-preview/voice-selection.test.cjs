@@ -98,7 +98,16 @@ for(const failure of ['failSynthesis','failUpload','failCommit'])test(`regenerat
  try{await assert.rejects(regenerateSample(form('en-US-Wavenet-A')),e=>!!e.url);}finally{console.error=oldError;}
  assert.deepEqual(fixture.row,before);assert.equal(fixture.commits.length,0);
 });
-test('default creation calls only existing OpenAI path',async()=>{
+test('new assignment defaults to WaveNet F and publishes its pair when enabled',async()=>{
+ reset();await createAssignment(form());assert.equal(fixture.row.sample_voice,'en-US-Wavenet-F');assert.equal(fixture.syntheses.length,1);assert.equal(fixture.syntheses[0].voice,'en-US-Wavenet-F');assert.equal(fixture.openai.length,0);assert.equal(fixture.uploads.length,2);assert.equal(fixture.commits.length,1);
+});
+test('explicit OpenAI choice is preserved when WaveNet is enabled',async()=>{
+ reset();await createAssignment(form('nova'));assert.equal(fixture.row.sample_voice,'nova');assert.equal(fixture.syntheses.length,0);assert.equal(fixture.openai.length,2);
+});
+test('regeneration of existing OpenAI and legacy assignments never adopts the new default',async()=>{
+ for(const voice of ['nova',null]){reset();fixture.row.sample_voice=voice;await regenerateSample(form());assert.equal(fixture.syntheses.length,0);assert.equal(fixture.openai.length,2);assert.equal(fixture.row.sample_voice,voice||'coral');}
+});
+test('new assignment retains the OpenAI default when WaveNet is disabled',async()=>{
  reset();delete process.env.WAVENET_TEST_ENABLED;await createAssignment(form());assert.equal(fixture.syntheses.length,0);assert.equal(fixture.openai.length,2);assert.equal(fixture.row.sample_voice,'coral');
 });
 test('pair publication commits only after normal and slow uploads both finish',async()=>{
@@ -109,6 +118,15 @@ test('voice selector renders ten WaveNet options only when enabled and retains l
  const html=renderToStaticMarkup(React.createElement(Select,{enabled:true,value:'en-US-Wavenet-D'}));assert.equal((html.match(/value="en-US-Wavenet-/g)||[]).length,10);assert.match(html,/selected="" value="en-US-Wavenet-D"|value="en-US-Wavenet-D" selected=""/);
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(Select,{})),/en-US-Wavenet-/);
  assert.match(renderToStaticMarkup(React.createElement(Select,{value:'en-US-Wavenet-F'})),/테스트 환경에서 재생성 가능/);
+});
+test('new-assignment selector defaults to F only when enabled and preserves explicit or historical choices',()=>{
+ const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');const Select=require('../../src/components/SampleVoiceSelect.tsx').default;
+ const selected=(props)=>{const html=renderToStaticMarkup(React.createElement(Select,props));return html.match(/<option value="([^"]+)" selected=""/)[1];};
+ assert.equal(selected({enabled:true,newAssignment:true}),'en-US-Wavenet-F');
+ assert.equal(selected({enabled:false,newAssignment:true}),'coral');
+ assert.equal(selected({enabled:true,newAssignment:true,value:'nova'}),'nova');
+ assert.equal(selected({enabled:true,value:null}),'coral');
+ assert.equal(selected({enabled:true,value:'en-US-Wavenet-J'}),'en-US-Wavenet-J');
 });
 test('actual WaveNet adapter sends only plain text, one selected voice and rates 1/0.7 to the test project',async()=>{
  reset();const cp=require('node:child_process'),savedExec=cp.execFile,savedFetch=global.fetch;

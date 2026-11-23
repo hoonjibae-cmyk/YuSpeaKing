@@ -1,6 +1,6 @@
 // gpt-4o-mini-tts 음성 목록 (선생님이 과제 생성/재생성 시 선택)
 export const TTS_VOICES = [
-  { id: "coral", label: "코랄 — 밝고 친근한 여성 (기본)" },
+  { id: "coral", label: "코랄 — 밝고 친근한 여성 (OpenAI 기본)" },
   { id: "shimmer", label: "쉬머 — 부드럽고 밝은 여성" },
   { id: "nova", label: "노바 — 활기찬 여성" },
   { id: "sage", label: "세이지 — 차분한 여성" },

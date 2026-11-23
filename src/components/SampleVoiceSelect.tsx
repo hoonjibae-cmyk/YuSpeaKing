@@ -1,10 +1,10 @@
 import { DEFAULT_TTS_VOICE, TTS_VOICES } from "@/lib/tts-voices";
-import { WAVENET_VOICES } from "@/lib/sample-voices";
+import { defaultNewSampleVoice, WAVENET_VOICES } from "@/lib/sample-voices";
 
-export default function SampleVoiceSelect({ enabled = false, value, compact = false }: {
-  enabled?: boolean; value?: string | null; compact?: boolean;
+export default function SampleVoiceSelect({ enabled = false, value, compact = false, newAssignment = false }: {
+  enabled?: boolean; value?: string | null; compact?: boolean; newAssignment?: boolean;
 }) {
-  const selected = value || DEFAULT_TTS_VOICE;
+  const selected = value || (newAssignment ? defaultNewSampleVoice(enabled) : DEFAULT_TTS_VOICE);
   const unavailable = !enabled && WAVENET_VOICES.some((v) => v.id === selected);
   return (
     <select name="voice" defaultValue={selected} aria-label="샘플음성 목소리"

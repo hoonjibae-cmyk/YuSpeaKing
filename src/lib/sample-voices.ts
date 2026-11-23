@@ -1,6 +1,11 @@
 import { DEFAULT_TTS_VOICE, TTS_VOICES } from "./tts-voices";
 
 export const DEFAULT_WAVENET_VOICE = "en-US-Wavenet-F";
+
+// Apply only to new assignments; legacy assignments keep their stored voice.
+export function defaultNewSampleVoice(enabled: boolean): string {
+  return enabled ? DEFAULT_WAVENET_VOICE : DEFAULT_TTS_VOICE;
+}
 // Official US English WaveNet catalogue, checked 2026-11-23. No subjective tone claims.
 export const WAVENET_VOICES = [
   { id: "en-US-Wavenet-F", label: "미국 영어 F · 여성 (비교에 사용한 음성)" },

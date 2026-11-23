@@ -78,7 +78,7 @@ export default async function AdminDashboard({
     costByKind.set(u.kind, (costByKind.get(u.kind) ?? 0) + c);
   });
   const KIND_LABEL: Record<string, string> = {
-    tts: "샘플음성(gpt-4o-mini-tts)",
+    tts: "샘플음성(OpenAI · Google)",
     azure: "발음평가(Azure)",
     claude_feedback: "피드백(Claude)",
     claude_monthly: "월말리포트(Claude)",

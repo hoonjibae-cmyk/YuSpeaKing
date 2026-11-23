@@ -5,7 +5,8 @@ import {
   updateAssignment,
 } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
-import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
+import SampleVoiceSelect from "@/components/SampleVoiceSelect";
+import { waveNetTestEnabled } from "@/lib/sample-voices";
 import { daysUntilArchive } from "@/lib/date";
 
 export interface AssignmentRow {
@@ -134,18 +135,7 @@ export default function AssignmentCard({
             >
               <input type="hidden" name="classId" value={classId} />
               <input type="hidden" name="assignmentId" value={a.id} />
-              <select
-                name="voice"
-                defaultValue={a.sample_voice || DEFAULT_TTS_VOICE}
-                className="max-w-[8.5rem] rounded border border-slate-200 px-1 py-0.5 text-[11px] text-slate-500 focus:border-brand focus:outline-none"
-                title="음성 선택 후 재생성"
-              >
-                {TTS_VOICES.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
+              <SampleVoiceSelect enabled={waveNetTestEnabled()} value={a.sample_voice} compact />
               <SubmitButton
                 pendingText="생성 중…"
                 className="whitespace-nowrap text-slate-400 hover:text-brand hover:underline"

@@ -13,7 +13,9 @@ import { generateClassCode } from "@/lib/class-code";
 import { getSyncMode } from "@/lib/hr/sync";
 import { todayKST } from "@/lib/date";
 import { synthesizeSpeech } from "@/lib/ai/tts";
-import { normalizeVoice } from "@/lib/tts-voices";
+import { buildWaveNetRequests, isWaveNetVoice, selectSampleVoice, waveNetTestEnabled } from "@/lib/sample-voices";
+import { synthesizeWaveNetPair } from "@/lib/ai/wavenet";
+import { publishSamplePair } from "@/lib/ai/sample-pair";
 import { hashPassword } from "@/lib/student-session";
 import { notifyTeacher } from "@/lib/slack";
 import { evaluateSubmission, regenerateFeedback } from "@/lib/ai/evaluate";
@@ -37,7 +39,29 @@ async function generateAndStoreSamples(
   assignmentId: string,
   passageText: string,
   voice?: string,
+  assignmentPatch?: { title: string; passage_text: string; due_date: string | null; max_attempts: number },
 ) {
+  const selectedVoice = selectSampleVoice(voice, waveNetTestEnabled());
+  if (isWaveNetVoice(selectedVoice)) {
+    const { normal, slow } = await synthesizeWaveNetPair(passageText, selectedVoice);
+    const admin = createAdminClient();
+    const version = randomBytes(16).toString("hex");
+    await publishSamplePair({ normal, slow, voice: selectedVoice,
+      upload: async (mode, audio) => {
+        const objectPath = `${assignmentId}_wavenet_${version}_${mode}.mp3`;
+        const { error } = await admin.storage.from("sample-audio").upload(objectPath, audio, { contentType: "audio/mpeg", upsert: false });
+        if (error) throw new Error("샘플음성 저장 실패. 기존 음성을 유지합니다.");
+        return admin.storage.from("sample-audio").getPublicUrl(objectPath).data.publicUrl;
+      },
+      commit: async (normalUrl, slowUrl, selected) => {
+        const { error } = await admin.from("assignments")
+          .update({ ...assignmentPatch, sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl, sample_voice: selected })
+          .eq("id", assignmentId).select("id").single();
+        if (error) throw new Error("샘플음성 연결 실패. 기존 음성을 유지합니다.");
+      },
+    });
+    return;
+  }
   const admin = createAdminClient();
   const [normal, slow] = await Promise.all([
     synthesizeSpeech(passageText, "normal", voice),
@@ -59,7 +83,7 @@ async function generateAndStoreSamples(
     .data.publicUrl;
   await admin
     .from("assignments")
-    .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl })
+    .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl, sample_voice: selectedVoice })
     .eq("id", assignmentId);
 }
 
@@ -1156,7 +1180,13 @@ export async function createAssignment(formData: FormData) {
   const passageText = String(formData.get("passage_text") || "").trim();
   const dueDate = String(formData.get("due_date") || "") || null;
   const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
-  const voice = normalizeVoice(String(formData.get("voice") || ""));
+  let voice: string;
+  try {
+    voice = selectSampleVoice(String(formData.get("voice") || ""), waveNetTestEnabled());
+    if (isWaveNetVoice(voice)) buildWaveNetRequests(passageText, voice);
+  } catch (e) {
+    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(e instanceof Error ? e.message : "음성 선택을 확인하세요")}`);
+  }
 
   if (!classId || !title || !passageText) {
     redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
@@ -1195,6 +1225,7 @@ export async function createAssignment(formData: FormData) {
     await generateAndStoreSamples(assignment.id, passageText, voice);
   } catch (e) {
     console.error("[TTS] 샘플음성 생성 실패:", e);
+    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent("과제는 등록됐지만 샘플음성 생성에 실패했습니다. 인증·입력 길이를 확인 후 재생성하세요.")}`);
   }
 
   revalidatePath(`/teacher/classes/${classId}`);
@@ -1297,6 +1328,20 @@ export async function updateAssignment(formData: FormData) {
     .select("passage_text, sample_voice")
     .eq("id", assignmentId)
     .single();
+
+  // WaveNet passage edits publish the new text and BOTH matching audio URLs together.
+  if (current && isWaveNetVoice(current.sample_voice ?? "") && current.passage_text !== passageText) {
+    try {
+      await generateAndStoreSamples(assignmentId, passageText, current.sample_voice, {
+        title, passage_text: passageText, due_date: dueDate, max_attempts: maxAttempts,
+      });
+    } catch (e) {
+      redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(e instanceof Error ? e.message : "샘플음성 생성 실패. 기존 지문과 음성을 유지합니다.")}`);
+    }
+    revalidatePath(`/teacher/classes/${classId}`);
+    revalidatePath(`/teacher/classes/${classId}/archive`);
+    return;
+  }
 
   await db
     .from("assignments")
@@ -1691,17 +1736,8 @@ export async function regenerateSample(formData: FormData) {
 
   // 재생성 시 선생님이 새 음성을 고르면 반영, 아니면 기존 음성 유지
   const picked = String(formData.get("voice") || "").trim();
-  const voice = picked
-    ? normalizeVoice(picked)
-    : (assignment.sample_voice ?? undefined);
-  if (picked) {
-    await db
-      .from("assignments")
-      .update({ sample_voice: voice })
-      .eq("id", assignmentId);
-  }
-
   try {
+    const voice = selectSampleVoice(picked || assignment.sample_voice, waveNetTestEnabled());
     await generateAndStoreSamples(
       assignment.id,
       assignment.passage_text,
@@ -1710,7 +1746,7 @@ export async function regenerateSample(formData: FormData) {
   } catch (e) {
     console.error("[TTS] 재생성 실패:", e);
     redirect(
-      `/teacher/classes/${classId}?error=샘플음성+생성+실패+(OpenAI+키+확인)`,
+      `/teacher/classes/${classId}?error=${encodeURIComponent(e instanceof Error ? e.message : "샘플음성 생성 실패. 기존 음성을 유지합니다.")}`,
     );
   }
 

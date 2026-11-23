@@ -12,7 +12,7 @@
 |---|---|
 | 프론트/호스팅 | Next.js (App Router) · Vercel |
 | DB · 인증 · 스토리지 | Supabase (Postgres · Auth · Storage) |
-| 샘플 음성 (TTS) | OpenAI `tts-1-hd` |
+| 샘플 음성 (TTS) | OpenAI `gpt-4o-mini-tts` (기본) · Google Cloud WaveNet (선택) |
 | 발음 채점 | Azure Speech — Pronunciation Assessment |
 | 피드백 생성 | Anthropic Claude |
 
@@ -35,6 +35,12 @@ npm run dev
 노출되지 않습니다.
 
 ## 배포 (Vercel)
+
+샘플음성은 OpenAI를 기본값으로 유지하며, 과제 생성 시 미국 영어 WaveNet 10종 중
+하나를 선택할 수도 있습니다. WaveNet은 같은 목소리로 일반 낭독과 강제 쉼 없는
+0.7배속 MP3를 함께 저장합니다. 운영 인증·환경변수·검증 방법은
+[`docs/WAVENET-PRODUCTION.md`](docs/WAVENET-PRODUCTION.md)를 참고하세요.
+
 1. GitHub 저장소를 Vercel에 연결
 2. 위 환경변수를 Vercel 프로젝트에 등록
 3. Push 시 자동 배포

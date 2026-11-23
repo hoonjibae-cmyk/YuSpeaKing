@@ -6,6 +6,7 @@ import type { AzureScores } from "@/lib/types";
 import WordHighlights from "@/components/WordHighlights";
 import Recorder from "./Recorder";
 import { todayKST } from "@/lib/date";
+import { isWaveNetVoice } from "@/lib/sample-voices";
 
 export default async function StudentAssignmentPage({
   params,
@@ -20,7 +21,7 @@ export default async function StudentAssignmentPage({
     admin
       .from("assignments")
       .select(
-        "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, max_attempts, due_date"
+        "id, class_id, title, passage_text, sample_audio_url, sample_audio_slow_url, sample_voice, max_attempts, due_date"
       )
       .eq("id", params.assignmentId)
       .single(),
@@ -67,7 +68,9 @@ export default async function StudentAssignmentPage({
             {assignment.sample_audio_slow_url && (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <div className="mb-1 text-xs font-medium text-brand">
-                  🐢 또박또박 듣기 (단어 하나하나 발음에 집중해요)
+                  {isWaveNetVoice(assignment.sample_voice ?? "")
+                    ? "🐢 천천히 듣기 (자연스러운 0.7배속)"
+                    : "🐢 또박또박 듣기 (단어 하나하나 발음에 집중해요)"}
                 </div>
                 <audio
                   src={assignment.sample_audio_slow_url}

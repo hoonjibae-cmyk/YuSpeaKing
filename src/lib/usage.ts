@@ -30,7 +30,7 @@ interface UsageInput {
 function estimateCost(kind: Kind, u: UsageInput): number {
   switch (kind) {
     case "tts":
-      return (u.chars ?? 0) * RATES.ttsPerChar;
+      return (u.chars ?? 0) * (u.model?.startsWith("en-US-Wavenet-") ? 4 / 1_000_000 : RATES.ttsPerChar);
     case "azure":
       return (u.audioSeconds ?? 0) * RATES.azurePerSecond;
     case "claude_feedback":

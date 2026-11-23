@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
-import { TTS_VOICES, DEFAULT_TTS_VOICE } from "@/lib/tts-voices";
+import SampleVoiceSelect from "@/components/SampleVoiceSelect";
 
 type Mode = "type" | "pdf" | "photo";
 
@@ -52,7 +52,7 @@ interface Excluded {
   reason: string;
 }
 
-export default function PassageComposer({ classId }: { classId: string }) {
+export default function PassageComposer({ classId, wavenetEnabled = false }: { classId: string; wavenetEnabled?: boolean }) {
   const [mode, setMode] = useState<Mode>("type");
   const [source, setSource] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -450,17 +450,8 @@ export default function PassageComposer({ classId }: { classId: string }) {
         />
         <label className="block text-sm text-slate-500">
           🎙️ 샘플음성 목소리
-          <select
-            name="voice"
-            defaultValue={DEFAULT_TTS_VOICE}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
-          >
-            {TTS_VOICES.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
+          <SampleVoiceSelect enabled={wavenetEnabled} />
+          {wavenetEnabled && <span className="mt-1 block text-xs text-slate-400">WaveNet은 고른 목소리로 일반 낭독과 자연스러운 0.7배속을 함께 만들어요.</span>}
         </label>
         <div className="flex flex-wrap gap-4">
           <label className="block text-sm text-slate-500">

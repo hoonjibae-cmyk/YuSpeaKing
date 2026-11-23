@@ -21,6 +21,7 @@ import SubmitButton from "@/components/SubmitButton";
 import CopyButton from "@/components/CopyButton";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import PassageComposer from "./PassageComposer";
+import { waveNetTestEnabled } from "@/lib/sample-voices";
 import AssignmentCard, { type AssignmentRow } from "./AssignmentCard";
 import { todayKST, archiveCutoffKST, ARCHIVE_AFTER_DAYS } from "@/lib/date";
 import { coTaughtClassIds } from "@/lib/transfers";
@@ -823,7 +824,7 @@ export default async function ClassDetailPage({
                 + 새 지문 등록 (타이핑 / PDF · AI 문장 선별)
               </summary>
               <div className="mt-3">
-                <PassageComposer classId={classId} />
+                <PassageComposer classId={classId} wavenetEnabled={waveNetTestEnabled()} />
               </div>
             </details>
           )}

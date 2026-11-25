@@ -19,7 +19,7 @@ export function startPortalLogin(client: PortalClient) {
   response.cookies.set(txCookie, Buffer.from(JSON.stringify({ state, verifier, created: Date.now() })).toString("base64url"), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/learning-portal", maxAge: 180 });
   response.headers.set("Cache-Control", "no-store");response.headers.set("Referrer-Policy", "no-referrer");return response;
 }
-export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
+export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; subject?: string; test_auth_subject?: string; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
   if (!portalEnabled()) throw new Error("포탈 연결을 준비 중입니다.");
   let tx: { state: string; verifier: string; created: number };
   try { tx = JSON.parse(Buffer.from(request.cookies.get(txCookie)?.value || "", "base64url").toString()); } catch { throw new Error("로그인 요청이 만료됐습니다."); }
@@ -29,6 +29,8 @@ export async function exchangePortalCode(request: NextRequest, client: PortalCli
   if (!response.ok) throw new Error("로그인 코드가 만료됐습니다. 포탈에서 다시 시작해 주세요.");
   const identity = await response.json();
   if (client.endsWith("-preview")) { if (identity.is_test !== true || identity.card_id !== null || identity.audience !== client || typeof identity.preview_token !== "string" || !/^[\w-]{43}$/.test(identity.preview_token)) throw new Error("가상 학생 세션을 확인하지 못했습니다."); return identity; }
+  const testSubject=process.env.PORTAL_TEST_VOCA_SUBJECT;
+  if(testSubject && identity.is_test===true && identity.card_id===null && identity.audience===client && identity.subject==="test:voca:"+testSubject && identity.test_auth_subject===testSubject)return identity;
   if (identity.is_test !== false || identity.audience !== client || !/^\d+$/.test(identity.card_id || "") || identity.subject !== "card:" + identity.card_id) throw new Error("학생카드 연결이 확인되지 않았습니다.");
   return identity;
 }

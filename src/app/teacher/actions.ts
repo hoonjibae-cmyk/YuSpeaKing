@@ -1,4 +1,5 @@
 "use server";
+import { cookies } from "next/headers";
 
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -1231,6 +1232,7 @@ export async function createAssignment(formData: FormData) {
   }
 
   revalidatePath(`/teacher/classes/${classId}`);
+  if(cookies().get("maeil_teacher_ui")?.value==="1") redirect("https://learning.yussam.com/teacher?saved=speaking");
 }
 
 // ---------- 제출물 검토 (M4) ----------

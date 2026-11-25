@@ -819,7 +819,7 @@ export default async function ClassDetailPage({
         <section>
           <h2 className="font-semibold">과제 ({assignments?.length ?? 0})</h2>
           {canManage && (
-            <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+            <details id="maeil-create" className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
               <summary className="cursor-pointer text-sm font-medium text-brand">
                 + 새 지문 등록 (타이핑 / PDF · AI 문장 선별)
               </summary>

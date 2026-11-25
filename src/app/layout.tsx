@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./maeil.css";
+import "./maeil-teacher.css";
+import MaeilTeacherShell from "@/components/MaeilTeacherShell";
 import MaeilShell from "@/components/MaeilShell";
 import { APP_VERSION } from "@/lib/version";
 import NavButtons from "@/components/NavButtons";
@@ -34,7 +36,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        <MaeilShell app="speaking" />
+        <MaeilTeacherShell app="speaking" /><MaeilShell app="speaking" />
         {children}
         <NavButtons />
         <div className="no-print pointer-events-none fixed bottom-1 right-2 z-50 text-[10px] text-slate-300 select-none">

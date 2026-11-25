@@ -10,24 +10,31 @@ function callbackUrl(client: PortalClient) { return origins[client] + "/api/lear
 const txCookie = "learning_portal_transaction";
 const random = () => randomBytes(32).toString("base64url");
 export function portalEnabled() { return process.env.LEARNING_PORTAL_ENABLED === "true"; }
-export function startPortalLogin(client: PortalClient) {
+export function studentTarget(client:PortalClient,value:string|null|undefined){
+ const fallback=client.startsWith('speaking')?'/student/home':'/';if(!value)return fallback;
+ const uuid='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
+ const allowed=client==='speaking'?new RegExp('^/student/assignments/'+uuid+'$','i'):client==='voca'?new RegExp('^/self-test(?:/day/'+uuid+'|/'+uuid+')?$','i'):null;
+ if(value===fallback||allowed?.test(value))return value;throw new Error('허용되지 않은 과제 주소입니다.');
+}
+export function startPortalLogin(client: PortalClient, target?:string|null) {
   if (!portalEnabled()) return NextResponse.json({ error: "포탈 연결을 준비 중입니다. 기존 로그인은 그대로 이용해 주세요." }, { status: 503 });
   const state = random(), verifier = random();
   const url = new URL("/oauth/authorize", LEARNING_PORTAL_ORIGIN);
   url.search = new URLSearchParams({ client_id: client, redirect_uri: callbackUrl(client), state, code_challenge: createHash("sha256").update(verifier).digest("base64url") }).toString();
   const response = NextResponse.redirect(url);
-  response.cookies.set(txCookie, Buffer.from(JSON.stringify({ state, verifier, created: Date.now() })).toString("base64url"), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/learning-portal", maxAge: 180 });
+  response.cookies.set(txCookie, Buffer.from(JSON.stringify({ state, verifier, target:studentTarget(client,target), created: Date.now() })).toString("base64url"), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/learning-portal", maxAge: 180 });
   response.headers.set("Cache-Control", "no-store");response.headers.set("Referrer-Policy", "no-referrer");return response;
 }
-export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; subject?: string; test_auth_subject?: string; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
+export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; target?:string; subject?: string; test_auth_subject?: string; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
   if (!portalEnabled()) throw new Error("포탈 연결을 준비 중입니다.");
-  let tx: { state: string; verifier: string; created: number };
+  let tx: { state: string; verifier: string; created: number; target?:string };
   try { tx = JSON.parse(Buffer.from(request.cookies.get(txCookie)?.value || "", "base64url").toString()); } catch { throw new Error("로그인 요청이 만료됐습니다."); }
   const state = request.nextUrl.searchParams.get("state"), code = request.nextUrl.searchParams.get("code");
   if (!tx.state || tx.state !== state || !code || Date.now() - tx.created > 180000 || tx.created > Date.now()) throw new Error("로그인 요청을 확인해 주세요.");
   const response = await fetch(LEARNING_PORTAL_ORIGIN + "/oauth/token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, client_id: client, code_verifier: tx.verifier, redirect_uri: callbackUrl(client) }), cache: "no-store", signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error("로그인 코드가 만료됐습니다. 포탈에서 다시 시작해 주세요.");
   const identity = await response.json();
+  identity.target=studentTarget(client,tx.target);
   if (client.endsWith("-preview")) { if (identity.is_test !== true || identity.card_id !== null || identity.audience !== client || typeof identity.preview_token !== "string" || !/^[\w-]{43}$/.test(identity.preview_token)) throw new Error("가상 학생 세션을 확인하지 못했습니다."); return identity; }
   const testSubject=process.env.PORTAL_TEST_VOCA_SUBJECT;
   if(testSubject && identity.is_test===true && identity.card_id===null && identity.audience===client && identity.subject==="test:voca:"+testSubject && identity.test_auth_subject===testSubject)return identity;

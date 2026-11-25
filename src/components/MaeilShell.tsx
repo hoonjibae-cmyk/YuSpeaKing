@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-const PORTAL = "https://yussam-learning-portal.vercel.app";
+const PORTAL = "https://learning.yussam.com";
 
 /** Presentation only. Authentication is checked separately on the server. */
 export default function MaeilShell({ app }: { app: "speaking" | "voca" }) {

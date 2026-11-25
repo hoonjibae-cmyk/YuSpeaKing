@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-export const LEARNING_PORTAL_ORIGIN = "https://yussam-learning-portal.vercel.app";
+export const LEARNING_PORTAL_ORIGIN = "https://learning.yussam.com";
 export type PortalClient = "speaking" | "voca" | "speaking-preview" | "voca-preview";
 const origins = { speaking: "https://yuspeaking.yussam.com", voca: "https://voca.yussam.com", "speaking-preview":"https://yuspeaking.yussam.com", "voca-preview":"https://voca.yussam.com" };
 function callbackUrl(client: PortalClient) { return origins[client] + "/api/learning-portal/callback" + (client.endsWith("-preview") ? "?preview=1" : ""); }

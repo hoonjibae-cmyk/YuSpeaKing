@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyPortalIdentity } from "@/lib/learning-portal-report";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { activityWeek,activityMarks,activityPages } from "@/lib/learning-activity";
 import { todayKST } from "@/lib/date";
 export const dynamic = "force-dynamic";
 const headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer"};
@@ -17,7 +18,8 @@ export async function GET(request:NextRequest){
   ]);
   if(assignments.error||submissions.error||(submissions.data?.length||0)>1000)throw Error("TASK_READ_FAILED");
   const today=todayKST(),latest=new Map<string,string>();for(const row of submissions.data||[])if(!latest.has(row.assignment_id))latest.set(row.assignment_id,row.status);
-  return NextResponse.json({connected:true,date:today,scope:"현재 반의 최근 200개 과제",hasMore:(assignments.data?.length||0)>200,tasks:(assignments.data||[]).slice(0,200).map(a=>{
+  let activity=null;const week=request.nextUrl.searchParams.get("week");if(week){try{const b=activityWeek(week);const rows=await activityPages<{created_at:string;status:string}>((from,to)=>db.from("submissions").select("created_at,status",{count:"exact"}).eq("student_id",s.id).gte("created_at",b.from).lt("created_at",b.to).order("created_at").order("id").range(from,to));activity={connected:true,week,days:activityMarks(rows.map(x=>({time:x.created_at,completed:["submitted","evaluating","evaluated"].includes(x.status)})))};}catch{activity={connected:false,week,days:[]};}}
+  return NextResponse.json({connected:true,activity,date:today,scope:"현재 반의 최근 200개 과제",hasMore:(assignments.data?.length||0)>200,tasks:(assignments.data||[]).slice(0,200).map(a=>{
    const status=latest.get(a.id)||"not_submitted";return {id:a.id,title:a.title,dueAt:a.due_date,createdAt:a.created_at,overdue:!!a.due_date&&a.due_date<today,status,completed:["submitted","evaluating","evaluated"].includes(status),target:"/student/assignments/"+a.id};
   })},{headers});
  }catch{return NextResponse.json({error:"과제 연결을 확인하지 못했습니다."},{status:503,headers});}

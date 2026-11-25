@@ -51,11 +51,15 @@ export default function Recorder({
   alreadySubmitted,
   remainingAttempts,
   passageWords,
+  preview = false,
+  onPreviewCompleteAction,
 }: {
   assignmentId: string;
   alreadySubmitted: boolean;
   remainingAttempts: number;
   passageWords: number;
+  preview?: boolean;
+  onPreviewCompleteAction?: () => Promise<void>;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>(alreadySubmitted ? "done" : "idle");
@@ -209,6 +213,8 @@ export default function Recorder({
     setPhase("uploading");
     setError(null);
     try {
+      // Dedicated synthetic portal route only. Never upload or run paid assessment.
+      if (preview) { await onPreviewCompleteAction?.(); setPhase("done"); return; }
       // Azure 발음평가용 16kHz mono WAV 로 변환
       const wav = await blobToWav16kMono(blobRef.current);
 
@@ -277,9 +283,9 @@ export default function Recorder({
     return (
       <div className="rounded-2xl bg-green-50 p-6 text-center">
         <div className="text-4xl">✅</div>
-        <p className="mt-2 font-semibold text-green-700">제출되었습니다!</p>
+        <p className="mt-2 font-semibold text-green-700">{preview ? "가상 연습을 완료했어요!" : "제출되었습니다!"}</p>
         <p className="mt-1 text-sm text-green-600">
-          아래에서 발음 피드백을 확인해요.
+          {preview ? "녹음은 기기 안에만 있고, 업로드·AI 채점은 하지 않았어요." : "아래에서 발음 피드백을 확인해요."}
         </p>
         {remainingAttempts > 0 ? (
           <button

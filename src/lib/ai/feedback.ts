@@ -2,6 +2,7 @@ import "server-only";
 import type { AzureScores } from "../types";
 import { logUsage } from "../usage";
 import { getAiModel } from "../settings";
+import { feedbackGivenName, feedbackAddress, displayStudentFeedback } from "../feedback-name";
 
 export interface TwoTierFeedback {
   studentFeedback: string; // 학생용 간단·격려형 (즉시 노출)
@@ -30,7 +31,7 @@ export function buildFeedbackPrompt(
 
   // 이름은 DB 에 등록된 것만 쓴다. 없으면 아예 주지 않아 모델이 지어내지 못하게 한다.
   const nameLine = context?.name?.trim()
-    ? `\n[학생 이름] ${context.name.trim()}`
+    ? `\n[학생 이름] ${feedbackGivenName(context.name)}\n[학생 호칭] ${feedbackAddress(context.name) || "생략 — 이름을 부르지 말고 바로 내용을 말할 것"}`
     : "\n[학생 이름] 없음 — 이름이나 호칭을 쓰지 말고 바로 내용을 말할 것";
 
   const ctxLine = (() => {
@@ -124,7 +125,9 @@ teacherFeedback (교사용):
 1. ★★ 이름을 지어내지 마라. 실제로 '지호야', '민준아' 같은 없는 이름을 붙여 내보낸
    사고가 있었다. 아래 [학생 이름] 에 적힌 글자 말고는 **어떤 사람 이름도 쓸 수 없다.**
    다정하게 들리게 하려고 이름을 만들어 붙이는 것이 가장 흔한 실수다. 하지 마라.
-2. [학생 이름] 에 이름이 있으면 그 이름만, 한 글자도 바꾸지 말고 쓴다.
+2. [학생 이름]은 등록된 성명에서 성을 뺀 이름이다. 이름을 부를 때는 제공된 [학생 호칭]만
+   그대로 쓴다(예: 상윤아, 민지야). 성을 다시 붙이거나 받침에 맞지 않는 아/야를 붙이지 않는다.
+   [학생 호칭]이 생략이면 이름을 부르지 말고 바로 내용을 말한다.
 3. [학생 이름] 이 '없음' 이면 **이름도 호칭도 쓰지 않는다.** "학생", "친구", "○○야" 모두
    금지. 부르는 말 없이 바로 내용을 말한다. (예: "이번엔 지문을 끝까지 읽었어요")
 4. 인식된 발화나 지문에 사람 이름처럼 보이는 말이 있어도 그것은 학생 이름이 아니다.
@@ -140,7 +143,8 @@ teacherFeedback (교사용):
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      return await requestFeedback(key, model, system, user);
+      const result = await requestFeedback(key, model, system, user);
+      return { ...result, studentFeedback: displayStudentFeedback(result.studentFeedback, context?.name) };
     } catch (e) {
       lastError = e;
       console.error(`[피드백] ${attempt}차 생성 실패:`, e);

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { displayStudentFeedback } from "@/lib/feedback-name";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CrownMark } from "@/components/Logo";
 import { todayKST } from "@/lib/date";
@@ -246,7 +247,7 @@ export default async function ParentViewPage({
                 )}
                 {s?.student_feedback && (
                   <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-                    {s.student_feedback}
+                    {displayStudentFeedback(s.student_feedback, student.name)}
                   </p>
                 )}
               </article>

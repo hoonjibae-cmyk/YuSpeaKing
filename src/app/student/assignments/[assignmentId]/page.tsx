@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayStudentFeedback } from "@/lib/feedback-name";
 import { notFound, redirect } from "next/navigation";
 import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -156,7 +157,7 @@ export default async function StudentAssignmentPage({
             </div>
           )}
           <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-            {submission.student_feedback}
+            {displayStudentFeedback(submission.student_feedback, session.name)}
           </p>
           {(submission.azure_scores as AzureScores | null)?.words && (
             <div className="mt-3">

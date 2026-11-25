@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayStudentFeedback } from "@/lib/feedback-name";
 import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -164,7 +165,7 @@ export default async function StudentHistoryPage() {
                   )}
                   {s.student_feedback && (
                     <p className="whitespace-pre-wrap rounded-lg bg-brand-light p-3 text-sm text-slate-700">
-                      {s.student_feedback}
+                      {displayStudentFeedback(s.student_feedback, session.name)}
                     </p>
                   )}
                 </div>

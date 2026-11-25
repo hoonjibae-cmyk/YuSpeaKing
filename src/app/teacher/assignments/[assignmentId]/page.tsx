@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayStudentFeedback } from "@/lib/feedback-name";
 import { notFound } from "next/navigation";
 import { sharedClassIds, accessFor } from "@/lib/class-access";
 import { getTeacherContext } from "@/lib/teacher-context";
@@ -264,7 +265,7 @@ export default async function AssignmentDashboard({
                           학생에게 표시된 간단 피드백
                         </div>
                         <p className="mt-1 whitespace-pre-wrap">
-                          {sub.student_feedback}
+                          {displayStudentFeedback(sub.student_feedback, student.name)}
                         </p>
                         {BROKEN_FEEDBACK.includes(sub.student_feedback) && (
                           <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">

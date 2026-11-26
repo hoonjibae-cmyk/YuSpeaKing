@@ -33,10 +33,10 @@ export async function POST(request:Request){
    if(students.error||assignments.error||students.data.length>1000||students.count!==null&&students.count>students.data.length)throw Error('Class data unavailable');
    const memberIds=new Set(students.data.map(s=>s.id)),recent=assignments.data.slice(0,50);
    const items=await Promise.all(recent.map(async a=>{
-    const submissions=await db.from('submissions').select('student_id,status',{count:'exact'}).eq('assignment_id',a.id).limit(1001);
+    const submissions=await db.from('submissions').select('student_id,status,overall_score',{count:'exact'}).eq('assignment_id',a.id).limit(1001);
     if(submissions.error||submissions.data.length>1000||submissions.count!==null&&submissions.count>submissions.data.length)throw Error('Submission data unavailable');
     const completed=Array.from(new Set(submissions.data.filter(s=>memberIds.has(s.student_id)&&['submitted','evaluating','evaluated'].includes(s.status)).map(s=>s.student_id)));
-    return {id:a.id,title:a.title,dueAt:a.due_date,createdAt:a.created_at,status:'published',completedCount:completed.length,...(requested?{completedStudentIds:completed,errorStudentIds:submissions.data.filter(s=>memberIds.has(s.student_id)&&s.status==='error').map(s=>s.student_id)}:{}),url:'https://yuspeaking.yussam.com/teacher/assignments/'+a.id};
+    return {id:a.id,title:a.title,dueAt:a.due_date,createdAt:a.created_at,status:'published',completedCount:completed.length,targetStudentCount:memberIds.size,averageScore:(()=>{const scores=submissions.data.filter(s=>memberIds.has(s.student_id)&&s.status==='evaluated'&&s.overall_score!==null).map(s=>Number(s.overall_score));return scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null;})(),...(requested?{completedStudentIds:completed,errorStudentIds:submissions.data.filter(s=>memberIds.has(s.student_id)&&s.status==='error').map(s=>s.student_id)}:{}),url:'https://yuspeaking.yussam.com/teacher/assignments/'+a.id};
    }));
    const mapped=links.data.filter(l=>l.class_id===c.id);
    return {id:c.id,name:c.name,cardClassId:mapped.length===1?mapped[0].hr_class_id:null,studentCount:memberIds.size,canManage:true,assignments:items,...(requested?{members:students.data.map(s=>({id:s.id,name:s.name,cardId:s.hr_student_id}))}:{}),hasMoreAssignments:assignments.data.length>50,url:'https://yuspeaking.yussam.com/teacher/classes/'+c.id};

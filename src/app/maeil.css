@@ -39,3 +39,11 @@ html[data-maeil-app="speaking"] a[href="/student/password"],html[data-maeil-app=
 
 /* Keep the 44px touch target while placing the active underline next to text. */
 .maeil-program-switcher>[aria-current="page"]{border-bottom-color:transparent;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:5px}
+
+/* Portal-only Speaking bottom tools; direct-address presentation stays intact. */
+html[data-maeil-app="speaking"] .maeil-primary-nav{position:fixed;inset:auto 0 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:calc(56px + env(safe-area-inset-bottom));padding:0 0 env(safe-area-inset-bottom);gap:0;background:#fff;border-top:1px solid #e7ebf4;z-index:70}
+html[data-maeil-app="speaking"] .maeil-primary-nav a{display:flex;flex-direction:column;justify-content:center;gap:3px;height:56px;min-height:56px;border:0;background:#fff;color:#8a90a2;font-size:11px;font-weight:500}
+html[data-maeil-app="speaking"] .maeil-primary-nav a:first-child{border:0;background:#fff;color:#8a90a2;font-weight:500}
+html[data-maeil-app="speaking"] .maeil-primary-nav a[aria-current="page"]{color:#214de0;background:#fff;font-weight:700;border:0}
+html[data-maeil-app="speaking"] .maeil-primary-nav svg{width:22px;height:22px}
+html[data-maeil-app="speaking"] body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}

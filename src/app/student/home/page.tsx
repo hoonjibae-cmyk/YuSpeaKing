@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import Link from "next/link";
 import { requireStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -17,6 +18,7 @@ export default async function StudentHome({
   const session = await requireStudent();
   const admin = createAdminClient();
   const today = todayKST();
+  const portalView = cookies().get("maeil_ui")?.value === "1";
 
   // 공지 (안 읽은 개수 배지용)
   const notices = await getStudentNotices(session.studentId, session.classId);
@@ -77,7 +79,7 @@ export default async function StudentHome({
 
   // 마감이 지난 과제는 '지난 과제 목록'으로. 홈에는 진행 중(마감 전/마감 없음)만.
   const assignments = (allAssignments ?? []).filter(
-    (a) => !a.due_date || a.due_date >= today,
+    (a) => (!a.due_date || a.due_date >= today) && (!portalView || !(subs ?? []).some(s => s.assignment_id === a.id)),
   );
   const pastCount = (allAssignments ?? []).length - assignments.length;
 
@@ -199,7 +201,7 @@ export default async function StudentHome({
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
       {/* 모바일에서는 제목과 버튼을 두 줄로 나눠 글자가 깨지지 않게 한다 */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {portalView ? <h1 className="text-xl font-bold text-brand">오늘의 스피킹</h1> : <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <CrownMark className="h-8 w-8 shrink-0" />
           <div className="min-w-0">
@@ -238,7 +240,7 @@ export default async function StudentHome({
             </button>
           </form>
         </div>
-      </header>
+      </header>}
 
       {searchParams.pw === "done" && (
         <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -271,7 +273,7 @@ export default async function StudentHome({
         </Link>
       )}
 
-      {pastCount > 0 && (
+      {!portalView && pastCount > 0 && (
         <Link
           href="/student/past"
           className="mt-5 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 transition hover:border-brand hover:text-brand"

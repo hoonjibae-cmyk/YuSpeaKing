@@ -910,11 +910,11 @@ export async function grantCoupon(formData: FormData) {
     .maybeSingle();
   if (!s) redirect(back);
 
-  const next = Math.max(0, (s.bonus_coupons ?? 0) + delta);
-  await admin
-    .from("students")
-    .update({ bonus_coupons: next })
-    .eq("id", studentId);
+  const reason = String(formData.get("reason") || "").trim();
+  const requestId = String(formData.get("requestId") || "");
+  if (!reason || reason.length > 100 || !Number.isInteger(delta) || Math.abs(delta)>20 || !/^[a-f0-9-]{36}$/i.test(requestId)) redirect(back);
+  const result = await admin.rpc("grant_special_coupon", {p_teacher:effectiveId,p_class:classId,p_student:studentId,p_amount:delta,p_reason:reason,p_request:requestId});
+  if (result.error) redirect(back);
   revalidatePath(back);
   revalidatePath(`/teacher/classes/${classId}`);
 }

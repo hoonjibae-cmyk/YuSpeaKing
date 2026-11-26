@@ -177,7 +177,7 @@ export default async function CouponsPage({
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
-                <form action={grantCoupon}>
+                <form action={grantCoupon}><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="reason" aria-label="쿠폰 지급·회수 사유" placeholder="쿠폰 사유 (필수)" required maxLength={100} className="w-36 rounded border px-2 py-1 text-sm" />
                   <input type="hidden" name="classId" value={classId} />
                   <input type="hidden" name="studentId" value={s.id} />
                   <input type="hidden" name="delta" value="-1" />
@@ -193,7 +193,7 @@ export default async function CouponsPage({
                     −
                   </SubmitButton>
                 </form>
-                <form action={grantCoupon}>
+                <form action={grantCoupon}><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="reason" aria-label="쿠폰 지급·회수 사유" placeholder="쿠폰 사유 (필수)" required maxLength={100} className="w-36 rounded border px-2 py-1 text-sm" />
                   <input type="hidden" name="classId" value={classId} />
                   <input type="hidden" name="studentId" value={s.id} />
                   <input type="hidden" name="delta" value="1" />

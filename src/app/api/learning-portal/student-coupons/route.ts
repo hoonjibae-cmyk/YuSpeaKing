@@ -10,5 +10,6 @@ export async function GET(request:NextRequest){try{
  const c=await db.from('classes').select('teacher_id').eq('id',s.class_id).single();if(c.error||!c.data)throw Error('CLASS_READ');
  const teacher=await db.from('teachers').select('coupon_goal,coupon_reward_text').eq('id',c.data.teacher_id).maybeSingle();if(teacher.error)throw Error('TEACHER_READ');
  let query=db.from('submissions').select('id',{head:true,count:'exact'}).eq('student_id',s.id).eq('status','evaluated').gte('completeness',90);if(s.coupons_reset_at)query=query.gt('created_at',s.coupons_reset_at);const coupons=await query;if(coupons.error||coupons.count===null)throw Error('COUPON_READ');
- const auto=coupons.count,bonus=Math.max(0,s.bonus_coupons??0),carried=Math.max(0,s.carried_coupons??0);return NextResponse.json({count:auto+bonus+carried,auto,bonus,carried,goal:Math.max(1,teacher.data?.coupon_goal??25),reward:teacher.data?.coupon_reward_text?.trim()||''},{headers});
+ const events=await db.from('special_coupon_events').select('id,amount,reason,created_at').eq('student_id',s.id).order('created_at',{ascending:false}).limit(30);if(events.error)throw Error('COUPON_HISTORY_READ');
+ const auto=coupons.count,bonus=Math.max(0,s.bonus_coupons??0),carried=Math.max(0,s.carried_coupons??0);return NextResponse.json({count:auto+bonus+carried,auto,bonus,carried,history:events.data,goal:Math.max(1,teacher.data?.coupon_goal??25),reward:teacher.data?.coupon_reward_text?.trim()||''},{headers});
  }catch{return NextResponse.json({error:'쿠폰 현황을 확인하지 못했습니다.'},{status:503,headers});}}

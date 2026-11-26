@@ -767,7 +767,7 @@ export default async function ClassDetailPage({
                 {/* 보너스 쿠폰 지급 (보조강사도 할 수 있다) */}
                 <div className="mt-1.5 flex items-center gap-2 pl-8">
                   <span className="text-xs text-slate-400">🎟️ 특별 쿠폰</span>
-                  <form action={grantCoupon}>
+                  <form action={grantCoupon}><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="reason" aria-label="쿠폰 지급·회수 사유" placeholder="쿠폰 사유 (필수)" required maxLength={100} className="w-36 rounded border px-2 py-1 text-sm" />
                     <input type="hidden" name="classId" value={classId} />
                     <input type="hidden" name="studentId" value={s.id} />
                     <input type="hidden" name="delta" value="-1" />
@@ -782,7 +782,7 @@ export default async function ClassDetailPage({
                   <span className="min-w-4 text-center text-sm font-semibold text-violet-600 tabular-nums">
                     {s.bonus_coupons ?? 0}
                   </span>
-                  <form action={grantCoupon}>
+                  <form action={grantCoupon}><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="reason" aria-label="쿠폰 지급·회수 사유" placeholder="쿠폰 사유 (필수)" required maxLength={100} className="w-36 rounded border px-2 py-1 text-sm" />
                     <input type="hidden" name="classId" value={classId} />
                     <input type="hidden" name="studentId" value={s.id} />
                     <input type="hidden" name="delta" value="1" />

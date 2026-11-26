@@ -19,7 +19,7 @@ export async function POST(request:Request){
   if(matches.length!==1)return NextResponse.json({error:'선생님 계정 연결을 확인해 주세요.'},{status:403,headers});
   const teacher=matches[0],shared=await coTaughtClassIds(teacher.id);
   let query=db.from('classes').select('id,name,teacher_id').is('archived_at',null).order('name').limit(201);
-  query=shared.length?query.or(`teacher_id.eq.${teacher.id},id.in.(${shared.join(',')})`):query.eq('teacher_id',teacher.id);
+  if(!(identity.department==='경영지원'&&teacher.role==='admin'))query=shared.length?query.or(`teacher_id.eq.${teacher.id},id.in.(${shared.join(',')})`):query.eq('teacher_id',teacher.id);
   if(requested)query=query.eq('id',requested);
   const result=await query;if(result.error||result.data.length>200)throw Error('Class lookup unavailable');
   if(requested&&!result.data.some(c=>c.id===requested))return NextResponse.json({error:'이 반을 조회할 권한이 없습니다.'},{status:404,headers});

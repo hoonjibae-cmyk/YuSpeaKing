@@ -25,7 +25,7 @@ export function startPortalLogin(client: PortalClient, target?:string|null) {
   response.cookies.set(txCookie, Buffer.from(JSON.stringify({ state, verifier, target:studentTarget(client,target), created: Date.now() })).toString("base64url"), { httpOnly: true, secure: true, sameSite: "lax", path: "/api/learning-portal", maxAge: 180 });
   response.headers.set("Cache-Control", "no-store");response.headers.set("Referrer-Policy", "no-referrer");return response;
 }
-export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; target?:string; subject?: string; test_auth_subject?: string; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
+export async function exchangePortalCode(request: NextRequest, client: PortalClient): Promise<{ card_id: string | null; is_test: boolean; programs?: string[]; target?:string; subject?: string; test_auth_subject?: string; preview_token?: string; voca_session?: { access_token: string; refresh_token: string } }> {
   if (!portalEnabled()) throw new Error("포탈 연결을 준비 중입니다.");
   let tx: { state: string; verifier: string; created: number; target?:string };
   try { tx = JSON.parse(Buffer.from(request.cookies.get(txCookie)?.value || "", "base64url").toString()); } catch { throw new Error("로그인 요청이 만료됐습니다."); }
@@ -42,7 +42,7 @@ export async function exchangePortalCode(request: NextRequest, client: PortalCli
   return identity;
 }
 export function clearPortalTransaction(response: NextResponse) { response.cookies.set(txCookie, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/api/learning-portal", maxAge: 0 }); return response; }
-export function setPortalUiCookie(response: NextResponse) { response.cookies.set("maeil_ui","1",{httpOnly:false,secure:true,sameSite:"lax",path:"/",maxAge:43200});return response; }
+export function setPortalUiCookie(response: NextResponse, programs?:string[]) { response.cookies.set("maeil_programs",(programs||[]).filter(p=>["speaking","voca","review"].includes(p)).join("."),{httpOnly:false,secure:true,sameSite:"lax",path:"/",maxAge:43200}); response.cookies.set("maeil_ui","1",{httpOnly:false,secure:true,sameSite:"lax",path:"/",maxAge:43200});return response; }
 export function setPreviewCookie(response: NextResponse, token: string) { response.cookies.set("learning_portal_preview",token,{httpOnly:true,secure:true,sameSite:"lax",path:"/learning-portal",maxAge:43200}); return setPortalUiCookie(clearPortalTransaction(response)); }
 export async function getPortalPreview(client: "speaking-preview" | "voca-preview") {
  if (!portalEnabled()) return null;

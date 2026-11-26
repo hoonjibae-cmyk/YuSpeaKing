@@ -39,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="ko" data-maeil-app={cookies().get("maeil_ui")?.value==="1"?"speaking":undefined}>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        <MaeilTeacherShell app="speaking" /><MaeilShell app="speaking" initialEnabled={cookies().get("maeil_ui")?.value==="1"} />
+        <MaeilTeacherShell app="speaking" initialEnabled={cookies().get("maeil_teacher_ui")?.value==="1"} /><MaeilShell app="speaking" initialEnabled={cookies().get("maeil_ui")?.value==="1"} />
         {children}
         <NavButtons />
         <div className="no-print pointer-events-none fixed bottom-1 right-2 z-50 text-[10px] text-slate-300 select-none">

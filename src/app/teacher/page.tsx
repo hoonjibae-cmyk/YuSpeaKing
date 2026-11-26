@@ -1,5 +1,3 @@
-import {cookies} from 'next/headers';
-import {redirect} from 'next/navigation';
 import Link from "next/link";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -20,7 +18,7 @@ export default async function TeacherDashboard({
 }: {
   searchParams: { error?: string };
 }) {
-  if(cookies().get('maeil_teacher_ui')?.value==='1')redirect('https://learning.yussam.com/teacher/program/speaking');
+
   const { db, effectiveId, role, isImpersonating, actingName } =
     await getTeacherContext();
 
@@ -95,7 +93,7 @@ export default async function TeacherDashboard({
         <ImpersonationBanner name={actingName} />
       )}
       {/* 좁은 화면에서 제목과 메뉴가 겹치지 않도록 두 줄로 나눈다 */}
-      <header className="space-y-3">
+      <header className="space-y-3" data-maeil-native-header>
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <CrownMark className="h-9 w-9 shrink-0" />

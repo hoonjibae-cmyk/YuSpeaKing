@@ -5,7 +5,7 @@ const headers={'Cache-Control':'private, no-store'};
 export async function POST(request:Request){try{
  const raw=await request.text();if(raw.length>6000)throw Error('INPUT');const input=JSON.parse(raw),from=String(input.from||''),until=String(input.until||'');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(until)||!(Date.parse(until)>Date.parse(from))||Date.parse(until)-Date.parse(from)>31*86400000)throw Error('INPUT');
- const result=await dashboard(new Request(request.url,{method:'POST',body:JSON.stringify({proof:input.proof})}));if(!result.ok)return NextResponse.json({error:'권한을 확인해 주세요.'},{status:result.status,headers});
+ const result=await dashboard(new Request(request.url,{method:'POST',body:JSON.stringify({proof:input.proof,mode:'links'})}));if(!result.ok)return NextResponse.json({error:'권한을 확인해 주세요.'},{status:result.status,headers});
  const data=await result.json(),groups=data.classes.filter((c:{cardClassId:string})=>c.cardClassId&&c.cardClassId===input.cardClassId);if(groups.length!==1)return NextResponse.json({connected:false,students:[]},{headers});
  const db=createAdminClient(),students=await db.from('students').select('id,hr_student_id',{count:'exact'}).eq('class_id',groups[0].id).eq('status','approved').limit(1001);if(students.error||students.data.length>1000||students.count!==null&&students.count>students.data.length)throw Error('READ');
  if(!students.data.length)return NextResponse.json({connected:true,students:[]},{headers});

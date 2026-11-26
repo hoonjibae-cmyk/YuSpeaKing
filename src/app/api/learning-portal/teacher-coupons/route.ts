@@ -1,3 +1,7 @@
+import {todayKST} from '@/lib/date';
+import {fetchScoreRows,dailyAverage,visibleClasses,trendFrom} from '@/lib/trend';
+import {generateClassCode} from '@/lib/class-code';
+import {getSyncMode} from '@/lib/hr/sync';
 import {NextResponse} from 'next/server';
 import {createAdminClient} from '@/lib/supabase/admin';
 import {canGrantCoupons,couponHelperClassIds} from '@/lib/coupon-helpers';
@@ -9,16 +13,31 @@ export async function POST(request:Request){try{
  if(typeof input.proof!=='string'||input.proof.length>4096)throw Error('AUTH');
  const check=await fetch('https://portal.yussam.com/api/learning-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proof:input.proof}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
  if(!check.ok)throw Error('AUTH');const identity=await check.json();if(identity.allowed!==true||typeof identity.email!=='string')throw Error('AUTH');
- const db=createAdminClient(),rows=await db.from('teachers').select('id,email,slack_email,status,role,coupon_goal,coupon_reward_text',{count:'exact'}).limit(2000);
+ const db=createAdminClient(),rows=await db.from('teachers').select('id,email,slack_email,status,role,name,coupon_goal,coupon_reward_text',{count:'exact'}).limit(2000);
  if(rows.error||rows.count!==null&&rows.count>rows.data.length)throw Error('READ');
- const matches=rows.data.filter(t=>(t.status==='approved'||t.role==='admin')&&[t.email,t.slack_email].some(v=>v?.trim().toLowerCase()===identity.email.toLowerCase()));if(matches.length!==1)throw Error('AUTH');
+ const matches=rows.data.filter(t=>(t.status==='approved'||t.role==='admin')&&[t.email,t.slack_email].some(v=>v?.trim().toLowerCase()===identity.email.toLowerCase()));if(identity.viewOnly&&matches.length===0)return NextResponse.json({classes:[]},{headers});if(matches.length!==1)throw Error('AUTH');
  const teacher=matches[0],admin=identity.department==='경영지원'&&teacher.role==='admin';
+ if(['trend','trendExport'].includes(input.intent)){
+  const days=input.days===182?182:input.days===365?365:30,from=trendFrom(days),classes=await visibleClasses(db,teacher.id),scores=await fetchScoreRows(db,classes,from);
+  if(input.intent==='trendExport'){const cell=(value:unknown)=>{const raw=value==null?'':String(value),safe=typeof value==='string'&&/^[=+@-]/.test(raw)?"'"+raw:raw;return '"'+safe.replace(/"/g,'""')+'"';};const csv='\uFEFF'+[['반','번호','이름','과제','제출일','종합','정확도','유창성','완성도','억양'],...scores.map(r=>[r.className,r.studentNumber,r.studentName,r.assignmentTitle,r.date,r.overall,r.accuracy,r.fluency,r.completeness,r.prosody])].map(row=>row.map(cell).join(',')).join('\r\n');return NextResponse.json({csv,filename:'유스피킹_성적_'+from+'_'+todayKST()+'.csv'},{headers});}
+  return NextResponse.json({from,until:todayKST(),series:classes.map(c=>{const rows=scores.filter(r=>r.classId===c.id);return {id:c.id,name:c.name,count:rows.length,points:dailyAverage(rows),average:rows.length?rows.reduce((n,r)=>n+r.overall,0)/rows.length:null};})},{headers});
+ }
+ if(['rewardSettings','saveRewardSettings'].includes(input.intent)){
+  if(!admin||identity.viewOnly)throw Error('SCOPE');
+  if(input.intent==='saveRewardSettings'){if(!uuid(input.teacherId)||!Number.isInteger(input.goal)||input.goal<1||input.goal>100||typeof input.reward!=='string'||input.reward.length>500||!rows.data.some(t=>t.id===input.teacherId))throw Error('INVALID');const r=await db.from('teachers').update({coupon_goal:input.goal,coupon_reward_text:input.reward.trim()}).eq('id',input.teacherId);if(r.error)throw Error('READ');return NextResponse.json({ok:true,message:'쿠폰·보상 설정을 저장했습니다.'},{headers});}
+  return NextResponse.json({teachers:rows.data.map(t=>({id:t.id,name:t.name||t.email,goal:t.coupon_goal??25,reward:t.coupon_reward_text||''}))},{headers});
+ }
+ if(input.intent==='createClass'){
+  if(identity.viewOnly||teacher.role!=='admin'&&await getSyncMode()==='oneway')throw Error('SCOPE');if(typeof input.name!=='string'||input.name.trim().length<2||input.name.length>60)throw Error('INVALID');
+  for(let i=0;i<5;i++){const r=await db.from('classes').insert({teacher_id:teacher.id,name:input.name.trim(),class_code:generateClassCode()}).select('id').single();if(!r.error)return NextResponse.json({ok:true,id:r.data.id,message:'유스피킹 반을 만들었습니다.'},{headers});if(r.error.code!=='23505')throw Error('READ');}throw Error('READ');
+ }
  const shared=Array.from(new Set([...await coTaughtClassIds(teacher.id),...await couponHelperClassIds(teacher.id)]));
  let q=db.from('classes').select('id,name,teacher_id').is('archived_at',null).order('name').limit(1001);if(!admin)q=shared.length?q.or(`teacher_id.eq.${teacher.id},id.in.(${shared.join(',')})`):q.eq('teacher_id',teacher.id);
  const result=await q;if(result.error||result.data.length>1000)throw Error('READ');
  if(!input.classId)return NextResponse.json({classes:result.data.map(c=>({id:c.id,name:c.name}))},{headers});
  const klass=result.data.find(c=>c.id===input.classId);if(!klass)throw Error('SCOPE');
  if(input.intent==='grant'){
+  if(identity.viewOnly)throw Error('SCOPE');
   if(!uuid(input.studentId)||!uuid(input.requestId)||input.amount!==1||typeof input.reason!=='string'||!input.reason.trim()||input.reason.trim().length>100)throw Error('INVALID');
   if(!admin&&!await canGrantCoupons(teacher.id,klass.id))throw Error('SCOPE');
   const grant=await db.rpc('grant_special_coupon',{p_teacher:teacher.id,p_class:klass.id,p_student:input.studentId,p_amount:1,p_reason:input.reason.trim(),p_request:input.requestId});if(grant.error)throw Error('GRANT');return NextResponse.json({ok:true,message:'특별 쿠폰과 지급 사유를 저장했습니다.'},{headers});

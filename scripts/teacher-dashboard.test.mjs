@@ -14,10 +14,10 @@ if(table==='students')data=[{id:'student-own',name:'가상 학생',hr_student_id
 if(table==='class_links')data=[{class_id:'00000000-0000-4000-8000-000000000001',hr_class_id:'aca:123'}];
 if(table==='class_memberships')data=[{user_id:'student-own'}];
 if(table==='assignments')data=[{id:'own-assignment',title:'가상 과제',due_date:null,due_at:null}];
-if(table==='submissions')data=[{student_id:'student-own',status:'submitted'},{student_id:'foreign-student',status:'submitted'}];
+if(table==='submissions')data=[{assignment_id:'own-assignment',student_id:'student-own',status:'submitted'},{assignment_id:'own-assignment',student_id:'foreign-student',status:'submitted'}];
 if(table==='study_sessions')data=[{student_id:'student-own'},{student_id:'foreign-student'}];
 return Promise.resolve(resolve({data,error:null}));}};return q;}};}
-const original=Module._load;Module._load=function(id,parent,isMain){if(id==='@/lib/supabase/admin')return {createAdminClient:database};if(id==='@/lib/transfers')return {coTaughtClassIds:async()=>[]};return original.call(this,id,parent,isMain);};
+const original=Module._load;Module._load=function(id,parent,isMain){if(id==='@/lib/supabase/admin')return {createAdminClient:database};if(id==='@/lib/class-access')return {sharedClassIds:async()=>({all:[],manage:[],viewOnly:[]})};if(id==='@/lib/transfers')return {coTaughtClassIds:async()=>[]};return original.call(this,id,parent,isMain);};
 const {POST}=require(path.join(repo,'src/app/api/learning-portal/teacher-dashboard/route.ts'));Module._load=original;
 const saved=global.fetch;global.fetch=async(url,options)=>{assert.equal(url,'https://portal.yussam.com/api/learning-access');assert.equal(JSON.parse(options.body).proof,'fixture');return allowed?Response.json({allowed:true,empNo:'fake-emp',email:'teacher@example.test'}):new Response('{}',{status:403});};
 function request(input={proof:'fixture',teacherId:'foreign-teacher'}){return new Request('https://example.test/api/learning-portal/teacher-dashboard',{method:'POST',body:JSON.stringify(input)});}

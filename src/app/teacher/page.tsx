@@ -1,3 +1,5 @@
+import {cookies} from 'next/headers';
+import {redirect} from 'next/navigation';
 import Link from "next/link";
 import { getTeacherContext } from "@/lib/teacher-context";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,6 +20,7 @@ export default async function TeacherDashboard({
 }: {
   searchParams: { error?: string };
 }) {
+  if(cookies().get('maeil_teacher_ui')?.value==='1')redirect('https://learning.yussam.com/teacher/program/speaking');
   const { db, effectiveId, role, isImpersonating, actingName } =
     await getTeacherContext();
 

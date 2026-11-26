@@ -912,7 +912,7 @@ export async function grantCoupon(formData: FormData) {
 
   const reason = String(formData.get("reason") || "").trim();
   const requestId = String(formData.get("requestId") || "");
-  if (!reason || reason.length > 100 || !Number.isInteger(delta) || Math.abs(delta)>20 || !/^[a-f0-9-]{36}$/i.test(requestId)) redirect(back);
+  if (!reason || reason.length > 100 || !Number.isInteger(delta) || Math.abs(delta)!==1 || !/^[a-f0-9-]{36}$/i.test(requestId)) redirect(back);
   const result = await admin.rpc("grant_special_coupon", {p_teacher:effectiveId,p_class:classId,p_student:studentId,p_amount:delta,p_reason:reason,p_request:requestId});
   if (result.error) redirect(back);
   revalidatePath(back);

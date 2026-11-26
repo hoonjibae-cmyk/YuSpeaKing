@@ -7,6 +7,6 @@ const saved=global.fetch;global.fetch=async()=>Response.json({allowed:true,email
 const request=input=>new Request('https://fixture.test',{method:'POST',body:JSON.stringify({proof:'fixture',...input})});
 test('coupon route rejects forged class/admin, requires reason and binds mutations to verified teacher',async()=>{try{
  assert.equal((await POST(request({intent:'grant',classId:'foreign',isAdmin:true}))).status,403);assert.equal(writes,0);
- const input={intent:'grant',classId:'own',studentId:'00000000-0000-4000-8000-000000000001',requestId:'00000000-0000-4000-8000-000000000002',amount:1,reason:''};assert.equal((await POST(request(input))).status,400);assert.equal(writes,0);
+ const input={intent:'grant',classId:'own',studentId:'00000000-0000-4000-8000-000000000001',requestId:'00000000-0000-4000-8000-000000000002',amount:1,reason:''};assert.equal((await POST(request(input))).status,400);assert.equal(writes,0);assert.equal((await POST(request({...input,amount:2,reason:'수량 변조'}))).status,400);assert.equal(writes,0);
  assert.equal((await POST(request({...input,teacherId:'foreign',reason:'성실한 복습'}))).status,200);assert.equal(writes,1);
  }finally{global.fetch=saved;}});

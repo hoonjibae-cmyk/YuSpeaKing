@@ -27,3 +27,5 @@ html[data-maeil-app="speaking"] a[href="/student/password"],html[data-maeil-app=
  html[data-maeil-app] .maeil-primary-nav a:first-child{border-top-color:#214de0}
  html[data-maeil-app] body{padding-bottom:calc(48px + env(safe-area-inset-bottom))}
 }
+
+.maeil-program-name{flex:1;min-width:0;text-align:center;white-space:nowrap;color:#214de0;font-size:16px;font-weight:750;line-height:1.3}@media(max-width:760px){.maeil-program-name{font-size:14px}}

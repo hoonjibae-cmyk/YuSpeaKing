@@ -1,0 +1,14 @@
+import {createRequire} from 'node:module';import {fileURLToPath} from 'node:url';
+const require=createRequire(import.meta.url),{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),ts=require('typescript'),repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);
+
+const {NextRequest}=require('next/server');let fail=false,testIdentity=false,reads=[];const original=Module._load;
+Module._load=function(name,parent,main){
+ if(name==='@/lib/learning-portal-report')return {verifyPortalIdentity:async token=>{if(token!=='Bearer fixture')throw Error('AUTH');return {cardId:'123',userId:'own',isTest:testIdentity};}};
+ if(name==='@/lib/supabase/admin')return {createAdminClient:()=>({from(table){const filters=[];reads.push({table,filters});const q={select(){return q;},eq(k,v){filters.push([k,v]);return q;},gte(k,v){filters.push([k,v]);return q;},gt(k,v){filters.push([k,v]);return q;},single(){return q;},maybeSingle(){return q;},then(fn){return Promise.resolve({error:fail?{}:null,count:7,data:table==='students'?{id:'own-student',class_id:'own-class',status:'approved',hr_student_id:testIdentity?null:'123',coupons_reset_at:'2026-11-01',bonus_coupons:2,carried_coupons:3}:table==='classes'?{teacher_id:'own-teacher'}:{coupon_goal:25,coupon_reward_text:'가상 보상'}}).then(fn);}};return q;}})};
+ return original.call(this,name,parent,main);
+};const {GET}=require(path.join(repo,'src/app/api/learning-portal/student-coupons/route.ts'));Module._load=original;
+test('coupon source requires own verified identity and counts only eligible submissions after reset without writes',async()=>{
+ const req=()=>new NextRequest('https://yuspeaking.yussam.com/api/learning-portal/student-coupons?student_id=foreign',{headers:{Authorization:'Bearer fixture'}});
+ const r=await GET(req()),c=await r.json();assert.equal(c.count,12);assert.equal(c.goal,25);assert.deepEqual(reads[0].filters,[['hr_student_id','123']]);assert.deepEqual(reads.at(-1).filters,[['student_id','own-student'],['status','evaluated'],['completeness',90],['created_at','2026-11-01']]);assert.equal((await GET(new NextRequest('https://yuspeaking.yussam.com/api/learning-portal/student-coupons'))).status,503);fail=true;assert.equal((await GET(req())).status,404);fail=false;testIdentity=true;const old=process.env.PORTAL_TEST_SPEAKING_STUDENT;delete process.env.PORTAL_TEST_SPEAKING_STUDENT;assert.equal((await GET(req())).status,503);if(old!==undefined)process.env.PORTAL_TEST_SPEAKING_STUDENT=old;
+});

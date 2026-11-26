@@ -326,7 +326,7 @@ export default async function StudentHome({
       </section>
 
       {/* 쿠폰함 */}
-      <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <section className="maeil-legacy-coupons mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-amber-700">
             🎟️ 나의 쿠폰함

@@ -1,36 +1,8 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-const PORTAL = "https://learning.yussam.com";
-
-/** Presentation only. Authentication is checked separately on the server. */
-export default function MaeilShell({ app }: { app: "speaking" | "voca" }) {
-  const pathname = usePathname();
-  const [enabled, setEnabled] = useState(false);
-  const studentRoute = !/^\/(admin|teacher|login|guide|account)(\/|$)/.test(pathname);
-  useEffect(() => {
-    const active = studentRoute && document.cookie.split("; ").includes("maeil_ui=1");
-    setEnabled(active);
-    if (active) document.documentElement.dataset.maeilApp = app;
-    else delete document.documentElement.dataset.maeilApp;
-    return () => { delete document.documentElement.dataset.maeilApp; };
-  }, [pathname, studentRoute, app]);
-  if (!enabled) return null;
-  function leave() {
-    document.cookie = "maeil_ui=; Path=/; Max-Age=0; Secure; SameSite=Lax";
-    delete document.documentElement.dataset.maeilApp;
-    setEnabled(false);
-  }
-  return <header className="maeil-shell">
-    <a className="maeil-identity" href={PORTAL + "/portal"} aria-label="매일 러닝 학습 홈"><span className="maeil-symbol" aria-hidden="true">매</span><span><strong>매일 러닝</strong><small>{app === "speaking" ? "유스피킹 · 소리 내어 배우기" : "하루보카 · 매일 단어 쌓기"}</small></span></a>
-    <details className="maeil-menu" key={pathname}><summary>학습 메뉴 <span aria-hidden="true">⌄</span></summary><nav aria-label="매일 러닝 프로그램">
-      <a href={PORTAL + "/portal"}>⌂ <span>오늘의 학습</span></a>
-      <a href={PORTAL + "/go/speaking"} aria-current={app === "speaking" ? "page" : undefined}>◉ <span>유스피킹</span></a>
-      <a href={PORTAL + "/go/voca"} aria-current={app === "voca" ? "page" : undefined}>▣ <span>하루보카</span></a>
-      <a href={PORTAL + "/go/review"}>✦ <span>하루리뷰</span></a>
-      <a href={PORTAL + "/reports"}>▤ <span>나의 리포트</span></a>
-      <button type="button" onClick={leave}>기존 앱 화면으로 보기</button>
-    </nav></details>
-  </header>;
+import {useEffect,useState} from 'react';import {usePathname} from 'next/navigation';
+const PORTAL='https://learning.yussam.com';
+export default function MaeilShell({app,initialEnabled=false}:{app:'speaking'|'voca';initialEnabled?:boolean}){
+ const path=usePathname(),studentRoute=!/^\/(admin|teacher|login|guide|account)(\/|$)/.test(path),[enabled,setEnabled]=useState(initialEnabled);
+ useEffect(()=>{const active=studentRoute&&document.cookie.split('; ').includes('maeil_ui=1');setEnabled(active);if(active)document.documentElement.dataset.maeilApp=app;else delete document.documentElement.dataset.maeilApp;return()=>{delete document.documentElement.dataset.maeilApp;};},[path,studentRoute,app]);
+ if(!enabled)return null;return <><header className="maeil-shell"><a className="maeil-identity" href={PORTAL+'/portal'} aria-label="매일 러닝 학습 홈"><img src="/maeil-crown.svg" alt="목동유쌤영어 왕관"/><span><strong>매일 러닝</strong><small>MY DAILY LEARNING</small></span></a><nav className="maeil-primary-nav" aria-label="주 메뉴"><a href={PORTAL+'/portal'}>나의 학습</a><a href={PORTAL+'/reports'}>주간 리포트</a><a href={PORTAL+'/coupons'}>쿠폰함</a></nav><a className="maeil-guide" href={PORTAL+'/guide'}>사용법</a></header><div className="maeil-context"><strong>{app==='speaking'?'소리 내어 읽기':'오늘의 단어'}</strong><a href={PORTAL+'/portal'}>← 나의 학습</a></div></>;
 }

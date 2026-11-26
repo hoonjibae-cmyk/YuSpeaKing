@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./maeil.css";
@@ -34,9 +35,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko">
+    <html lang="ko" data-maeil-app={cookies().get("maeil_ui")?.value==="1"?"speaking":undefined}>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        <MaeilTeacherShell app="speaking" /><MaeilShell app="speaking" />
+        <MaeilTeacherShell app="speaking" /><MaeilShell app="speaking" initialEnabled={cookies().get("maeil_ui")?.value==="1"} />
         {children}
         <NavButtons />
         <div className="no-print pointer-events-none fixed bottom-1 right-2 z-50 text-[10px] text-slate-300 select-none">

@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./maeil.css";
+import "./program-header.css";
 import "./maeil-teacher.css";
 import MaeilTeacherShell from "@/components/MaeilTeacherShell";
 import MaeilShell from "@/components/MaeilShell";

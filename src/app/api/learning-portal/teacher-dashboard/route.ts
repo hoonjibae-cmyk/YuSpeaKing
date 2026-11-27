@@ -27,16 +27,22 @@ export async function POST(request:Request){
   if(payload.mode==='access')return NextResponse.json({classes:result.data.map(c=>({id:c.id,name:c.name}))},{headers});
   if(payload.mode==='directory'){
    if(identity.supervisor!==true&&!(identity.department==='경영지원'&&teacher.role==='admin'&&!identity.viewOnly))return NextResponse.json({error:'권한이 없습니다.'},{status:403,headers});
-   const day=typeof payload.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(payload.day)?payload.day:new Date(Date.now()+9*3600000).toISOString().slice(0,10),week=new Date(day+'T00:00:00Z');week.setUTCDate(week.getUTCDate()-((week.getUTCDay()+6)%7));const from=week.toISOString();week.setUTCDate(week.getUTCDate()+7);const until=week.toISOString();
-   const dayKey=new Date(Date.now()+9*3600000).toISOString().slice(0,10),coTeachers=await db.from('class_coteachers').select('class_id,teacher_id').lte('starts_on',dayKey).gte('ends_on',dayKey);if(coTeachers.error)throw Error('Shared teacher summary unavailable');
-   const directoryLinks=result.data.length?await db.from('class_links').select('class_id,hr_class_id').in('class_id',result.data.map(c=>c.id)):{data:[],error:null};if(directoryLinks.error)throw Error('Class links unavailable');
-   const classes=await Promise.all(result.data.map(async c=>{
-    const [students,tasks]=await Promise.all([db.from('students').select('id',{count:'exact',head:true}).eq('class_id',c.id).eq('status','approved'),db.from('assignments').select('id').eq('class_id',c.id).gte('created_at',from).lt('created_at',until).limit(1001)]);
-    if(students.error||tasks.error||tasks.data.length>1000)throw Error('Summary unavailable');
-    const submissions=tasks.data.length?await db.from('submissions').select('id,overall_score,status',{count:'exact'}).in('assignment_id',tasks.data.map(a=>a.id)).in('status',['submitted','evaluating','evaluated']).limit(10001):{data:[],error:null,count:0};
-    if(submissions.error||submissions.count!==null&&submissions.count>submissions.data.length)throw Error('Summary incomplete');const scores=submissions.data.filter(v=>v.status==='evaluated'&&v.overall_score!==null).map(v=>Number(v.overall_score)),owner=teachers.data.find(t=>t.id===c.teacher_id);
-    return {...c,cardClassId:directoryLinks.data.find(l=>l.class_id===c.id)?.hr_class_id||null,teacherEmails:[owner?.email,owner?.slack_email,...teachers.data.filter(t=>coTeachers.data.some(x=>x.class_id===c.id&&x.teacher_id===t.id)).flatMap(t=>[t.email,t.slack_email])].filter(Boolean),teacherEmail:owner?.slack_email||owner?.email,studentCount:students.count||0,taskCount:tasks.data.length,completedCount:submissions.data.length,averageScore:scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:null};
-   }));return NextResponse.json({classes},{headers});
+   const day=typeof payload.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(payload.day)?payload.day:new Date(Date.now()+9*3600000).toISOString().slice(0,10),week=new Date(day+'T00:00:00Z');week.setUTCDate(week.getUTCDate()-((week.getUTCDay()+6)%7));
+   if(Number.isNaN(week.getTime()))return NextResponse.json({error:'날짜를 확인해 주세요.'},{status:400,headers});
+   const dayKey=new Date(Date.now()+9*3600000).toISOString().slice(0,10),ids=result.data.map(c=>c.id);
+   const [coTeachers,directoryLinks,metrics]=await Promise.all([
+    db.from('class_coteachers').select('class_id,teacher_id').lte('starts_on',dayKey).gte('ends_on',dayKey),
+    ids.length?db.from('class_links').select('class_id,hr_class_id').in('class_id',ids):Promise.resolve({data:[],error:null}),
+    ids.length?db.rpc('maeil_directory_metrics',{p_classes:ids,p_week:week.toISOString().slice(0,10)}):Promise.resolve({data:[],error:null})
+   ]);
+   if(coTeachers.error||directoryLinks.error||metrics.error||!Array.isArray(metrics.data))throw Error('Summary unavailable');
+   const byClass=new Map<string,{classId:string;studentCount:number;taskCount:number;expectedCount:number;completedCount:number;averageScore:number|null}>(metrics.data.map((m:any)=>[m.classId,m]));
+   const classes=result.data.map(c=>{
+    const summary=byClass.get(c.id),owner=teachers.data.find(t=>t.id===c.teacher_id);
+    if(!summary)throw Error('Summary incomplete');
+    const links=directoryLinks.data.filter(l=>l.class_id===c.id);
+    return {...c,...summary,cardClassId:links.length===1?links[0].hr_class_id:null,teacherEmails:[owner?.email,owner?.slack_email,...teachers.data.filter(t=>coTeachers.data.some(x=>x.class_id===c.id&&x.teacher_id===t.id)).flatMap(t=>[t.email,t.slack_email])].filter(Boolean),teacherEmail:owner?.slack_email||owner?.email};
+   });return NextResponse.json({classes},{headers});
   }
   const links=result.data.length?await db.from('class_links').select('class_id,hr_class_id').in('class_id',result.data.map(c=>c.id)): {data:[],error:null};
   if(links.error)throw Error('Class identity unavailable');

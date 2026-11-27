@@ -1,0 +1,5 @@
+body:has(.maeil-assignment-popup){min-height:0;background:#fff;}
+.maeil-assignment-popup{padding:20px;max-width:none;margin:0;font-family:Arial,'Noto Sans KR',sans-serif;}
+.maeil-assignment-popup input,.maeil-assignment-popup select,.maeil-assignment-popup textarea{font-size:16px;}
+.maeil-assignment-popup button{min-height:44px;}
+body:has(.maeil-assignment-popup)>.no-print{display:none;}

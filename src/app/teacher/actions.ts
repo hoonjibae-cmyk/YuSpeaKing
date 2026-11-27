@@ -13,10 +13,9 @@ import { applyClassHandover, moveStudentToClass } from "@/lib/transfers";
 import { generateClassCode } from "@/lib/class-code";
 import { getSyncMode } from "@/lib/hr/sync";
 import { todayKST } from "@/lib/date";
-import { synthesizeSpeech } from "@/lib/ai/tts";
 import { buildWaveNetRequests, defaultNewSampleVoice, isWaveNetVoice, selectSampleVoice, waveNetTestEnabled } from "@/lib/sample-voices";
-import { synthesizeWaveNetPair } from "@/lib/ai/wavenet";
-import { publishSamplePair } from "@/lib/ai/sample-pair";
+import { createSpeakingAssignment } from "@/lib/create-speaking-assignment";
+import { generateAndStoreSamples } from "@/lib/ai/assignment-samples";
 import { hashPassword } from "@/lib/student-session";
 import { notifyTeacher } from "@/lib/slack";
 import { evaluateSubmission, regenerateFeedback } from "@/lib/ai/evaluate";
@@ -34,59 +33,6 @@ import { listUninvited, type Uninvited } from "@/lib/invites";
 import { listParentLinks, canManageClass } from "@/lib/parent-links";
 import { hrConfigured } from "@/lib/hr/client";
 import { syncAll, type SyncReport } from "@/lib/hr/sync";
-
-// 정상 속도 + 느린 샘플 음성 2종 생성 → Storage 업로드 → URL 저장
-async function generateAndStoreSamples(
-  assignmentId: string,
-  passageText: string,
-  voice?: string,
-  assignmentPatch?: { title: string; passage_text: string; due_date: string | null; max_attempts: number },
-) {
-  const selectedVoice = selectSampleVoice(voice, waveNetTestEnabled());
-  if (isWaveNetVoice(selectedVoice)) {
-    const { normal, slow } = await synthesizeWaveNetPair(passageText, selectedVoice);
-    const admin = createAdminClient();
-    const version = randomBytes(16).toString("hex");
-    await publishSamplePair({ normal, slow, voice: selectedVoice,
-      upload: async (mode, audio) => {
-        const objectPath = `${assignmentId}_wavenet_${version}_${mode}.mp3`;
-        const { error } = await admin.storage.from("sample-audio").upload(objectPath, audio, { contentType: "audio/mpeg", upsert: false });
-        if (error) throw new Error("샘플음성 저장 실패. 기존 음성을 유지합니다.");
-        return admin.storage.from("sample-audio").getPublicUrl(objectPath).data.publicUrl;
-      },
-      commit: async (normalUrl, slowUrl, selected) => {
-        const { error } = await admin.from("assignments")
-          .update({ ...assignmentPatch, sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl, sample_voice: selected })
-          .eq("id", assignmentId).select("id").single();
-        if (error) throw new Error("샘플음성 연결 실패. 기존 음성을 유지합니다.");
-      },
-    });
-    return;
-  }
-  const admin = createAdminClient();
-  const [normal, slow] = await Promise.all([
-    synthesizeSpeech(passageText, "normal", voice),
-    synthesizeSpeech(passageText, "slow", voice),
-  ]);
-  const normalPath = `${assignmentId}.mp3`;
-  const slowPath = `${assignmentId}_slow.mp3`;
-  await Promise.all([
-    admin.storage
-      .from("sample-audio")
-      .upload(normalPath, normal, { contentType: "audio/mpeg", upsert: true }),
-    admin.storage
-      .from("sample-audio")
-      .upload(slowPath, slow, { contentType: "audio/mpeg", upsert: true }),
-  ]);
-  const normalUrl = admin.storage.from("sample-audio").getPublicUrl(normalPath)
-    .data.publicUrl;
-  const slowUrl = admin.storage.from("sample-audio").getPublicUrl(slowPath)
-    .data.publicUrl;
-  await admin
-    .from("assignments")
-    .update({ sample_audio_url: normalUrl, sample_audio_slow_url: slowUrl, sample_voice: selectedVoice })
-    .eq("id", assignmentId);
-}
 
 // Student Card 일원화 중에는 반·학생을 Student Card 에서만 받는다.
 // 선생님이 직접 만들면 Student Card 와 어긋난 반·학생이 섞여 같은 학생이 두 번
@@ -1177,61 +1123,11 @@ export async function resetStudentPassword(formData: FormData) {
 export async function createAssignment(formData: FormData) {
   const { db } = await getTeacherContext();
   const classId = String(formData.get("classId") || "");
-  const title = String(formData.get("title") || "").trim();
-  const passageText = String(formData.get("passage_text") || "").trim();
-  const dueDate = String(formData.get("due_date") || "") || null;
-  const maxAttempts = 1; // 제출(분석)은 일괄 1회로 고정
-  let voice: string;
-  try {
-    const enabled = waveNetTestEnabled();
-    const requestedVoice = String(formData.get("voice") || "").trim();
-    voice = selectSampleVoice(requestedVoice || defaultNewSampleVoice(enabled), enabled);
-    if (isWaveNetVoice(voice)) buildWaveNetRequests(passageText, voice);
-  } catch (e) {
-    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(e instanceof Error ? e.message : "음성 선택을 확인하세요")}`);
-  }
-
-  if (!classId || !title || !passageText) {
-    redirect(`/teacher/classes/${classId}?error=제목과+지문을+입력하세요`);
-  }
-  if (passageText.includes("[?]")) {
-    redirect(
-      `/teacher/classes/${classId}?error=${encodeURIComponent(
-        "지문에 읽지 못한 단어([?])가 남아 있어요. 고친 뒤 등록해 주세요.",
-      )}`,
-    );
-  }
-
-  const { data: assignment, error } = await db
-    .from("assignments")
-    .insert({
-      class_id: classId,
-      title,
-      passage_text: passageText,
-      due_date: dueDate,
-      max_attempts: maxAttempts,
-      sample_voice: voice,
-    })
-    .select()
-    .single();
-
-  if (error || !assignment) {
-    redirect(
-      `/teacher/classes/${classId}?error=${encodeURIComponent(
-        error?.message || "과제 생성 실패",
-      )}`,
-    );
-  }
-
-  // 샘플 음성 생성 (best-effort: 실패해도 과제는 생성됨. 나중에 재생성 가능)
-  try {
-    await generateAndStoreSamples(assignment.id, passageText, voice);
-  } catch (e) {
-    console.error("[TTS] 샘플음성 생성 실패:", e);
-    redirect(`/teacher/classes/${classId}?error=${encodeURIComponent("과제는 등록됐지만 샘플음성 생성에 실패했습니다. 인증·입력 길이를 확인 후 재생성하세요.")}`);
-  }
-
+  let result;
+  try { result = await createSpeakingAssignment(db, formData); }
+  catch (error) { redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(error instanceof Error ? error.message : "과제 생성 실패")}`); }
   revalidatePath(`/teacher/classes/${classId}`);
+  if (result.warning) redirect(`/teacher/classes/${classId}?error=${encodeURIComponent(result.warning)}`);
   if(cookies().get("maeil_teacher_ui")?.value==="1") redirect("https://learning.yussam.com/teacher?saved=speaking");
 }
 

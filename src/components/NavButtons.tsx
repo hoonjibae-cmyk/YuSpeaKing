@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 export default function NavButtons() {
   const router = useRouter();
   const pathname = usePathname();
-  if (pathname === "/") return null;
+  if (pathname === "/" || /^\/teacher\/classes\/[^/]+\/create$/.test(pathname)) return null;
 
   const btn =
     "flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-600 shadow-sm backdrop-blur transition hover:bg-white hover:text-brand active:scale-95";

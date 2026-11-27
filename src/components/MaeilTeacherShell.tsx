@@ -9,7 +9,8 @@ const symbols:Record<string,string>={dashboard:'M4 20V10 M10 20V4 M16 20v-7 M22 
 export default function MaeilTeacherShell({app,initialEnabled=false}:{app:'speaking'|'voca';initialEnabled?:boolean}){
  const path=usePathname(),[navigation,setNavigation]=useState<Navigation>({});
  const eligible=app==='speaking'?/^\/(teacher|manual\/teacher)(\/|$)/.test(path)&&!path.startsWith('/teacher/login'):!/^\/(login|api|account|learning-portal)(\/|$)/.test(path);
- const active=initialEnabled&&eligible;
+ const popup=/^\/teacher\/classes\/[^/]+\/create$/.test(path);
+ const active=initialEnabled&&eligible&&!popup;
  useEffect(()=>{try{const raw=document.cookie.split('; ').find(c=>c.startsWith('maeil_teacher_nav='));let value=raw?decodeURIComponent(raw.slice('maeil_teacher_nav='.length)):'';if(value.startsWith('%7B'))value=decodeURIComponent(value);setNavigation(value?JSON.parse(value):{});}catch{setNavigation({});}},[path]);
  const manager=navigation.workspace?navigation.workspace==='management':navigation.supervisor===true;
  useEffect(()=>{if(active){document.documentElement.dataset.maeilTeacher=app;document.documentElement.dataset.maeilWorkspace=manager?'management':'teaching';}else{delete document.documentElement.dataset.maeilTeacher;delete document.documentElement.dataset.maeilWorkspace;}

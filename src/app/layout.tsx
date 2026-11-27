@@ -5,6 +5,7 @@ import "./maeil.css";
 import "./program-header.css";
 import "./maeil-teacher.css";
 import "./teacher-navigation.css";
+import "./assignment-popup.css";
 import MaeilTeacherShell from "@/components/MaeilTeacherShell";
 import MaeilShell from "@/components/MaeilShell";
 import { APP_VERSION } from "@/lib/version";

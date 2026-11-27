@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import SampleVoiceSelect from "@/components/SampleVoiceSelect";
+import { createPopupAssignment } from './create/actions';
 
 type Mode = "type" | "pdf" | "photo";
 
@@ -52,7 +53,8 @@ interface Excluded {
   reason: string;
 }
 
-export default function PassageComposer({ classId, wavenetEnabled = false }: { classId: string; wavenetEnabled?: boolean }) {
+export default function PassageComposer({ classId, wavenetEnabled = false, popupRequestId }: { classId: string; wavenetEnabled?: boolean; popupRequestId?: string }) {
+  const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<Mode>("type");
   const [source, setSource] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -437,9 +439,23 @@ export default function PassageComposer({ classId, wavenetEnabled = false }: { c
 
       {/* 3. 과제 정보 + 등록 */}
       <form
-        action={createAssignment}
+        action={popupRequestId ? undefined : createAssignment}
+        onSubmit={popupRequestId ? async (event) => {
+          event.preventDefault();
+          if(saving)return;
+          const form=new FormData(event.currentTarget);
+          setSaving(true);setError(null);
+          window.parent.postMessage({type:'maeil-speaking-popup-busy',classId,busy:true},'https://learning.yussam.com');
+          try{
+            const result=await createPopupAssignment(form);
+            if(result.error)throw new Error(result.error);
+            if('id' in result)window.parent.postMessage({type:'maeil-speaking-created',classId,assignmentId:result.id,warning:result.warning},'https://learning.yussam.com');
+          }catch(error){setError(error instanceof Error?error.message:'등록 결과를 확인하지 못했습니다. 다시 누르면 중복 등록 없이 결과를 확인합니다.');}
+          finally{setSaving(false);window.parent.postMessage({type:'maeil-speaking-popup-busy',classId,busy:false},'https://learning.yussam.com');}
+        } : undefined}
         className="space-y-2 border-t border-slate-100 pt-3"
       >
+        {popupRequestId && <input type="hidden" name="requestId" value={popupRequestId}/>}
         <input type="hidden" name="classId" value={classId} />
         <input type="hidden" name="passage_text" value={passage} />
         <input
@@ -483,7 +499,7 @@ export default function PassageComposer({ classId, wavenetEnabled = false }: { c
           </p>
         )}
 
-        {passage && !unreadable && (
+        {passage && !unreadable && (popupRequestId ? <button type="submit" disabled={saving||!wavenetEnabled} className="w-full rounded-lg bg-brand py-2 font-medium text-white disabled:opacity-50">{saving?'등록·샘플음성 생성 중…':'등록 (샘플음성 생성)'}</button> :
           <SubmitButton
             pendingText="샘플음성 만드는 중… (몇 초 걸려요)"
             className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark"

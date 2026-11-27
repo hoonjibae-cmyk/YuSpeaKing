@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (Buffer.byteLength(raw) > 65536) fail('공지 내용이 너무 깁니다.', 413);
     const input = JSON.parse(raw);
     if (!input || typeof input.proof !== 'string' || !input.proof || input.proof.length > 4096) fail('교사용 로그인을 확인해 주세요.', 401);
-    if (!['list', 'preview', 'create', 'delete'].includes(input.intent)) fail('공지 요청을 확인해 주세요.');
+    if (!['list', 'preview', 'audience', 'create', 'delete'].includes(input.intent)) fail('공지 요청을 확인해 주세요.');
     const check = await fetch('https://portal.yussam.com/api/learning-access', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proof: input.proof }),
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     if (matches.length === 0 && input.intent === 'list') return NextResponse.json({ classes: [], notices: [], canCreate: false, canSendAll: false, message: '현재 계정에 연결된 공지 발송 반이 없습니다.' }, { headers });
     if (matches.length !== 1) fail('교사 계정 연결을 확인해 주세요.', 403);
     const teacher = matches[0];
-    const admin = identity.department === '경영지원' && teacher.role === 'admin' && !identity.viewOnly;
+    const admin = !identity.viewOnly && (identity.supervisor === true || identity.department === '경영지원' && teacher.role === 'admin');
     const overview = !identity.viewOnly && (admin || identity.supervisor === true);
     const canCreate = !identity.viewOnly;
     let classQuery = db.from('classes').select('id,name,teacher_id', { count: 'exact' }).is('archived_at', null).order('name').limit(2000);
@@ -45,12 +45,14 @@ export async function POST(request: Request) {
     const teacherNames = new Map(teachers.data.map(t => [t.id, t.name]));
 
     if (input.intent === 'list') {
+      const links = allowedClasses.length ? await db.from('class_links').select('class_id,hr_class_id').in('class_id', allowedClasses.map(c => c.id)) : { data: [], error: null };
+      if (links.error) fail('반 연결 정보를 불러오지 못했습니다.', 503);
       let query = db.from('notices').select('id,author_id,scope,class_id,title,body,pinned,created_at,classes(name)').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50);
       if (!overview) query = query.or(`author_id.eq.${teacher.id},scope.eq.all`);
       const result = await query;
       if (result.error) fail('공지 이력을 불러오지 못했습니다.', 503);
       return NextResponse.json({
-        classes: allowedClasses.map(c => ({ id: c.id, name: c.name })), canCreate, canSendAll: admin,
+        classes: allowedClasses.map(c => { const mapped = (links.data || []).filter(l => l.class_id === c.id); return { id: c.id, name: c.name, isOwn: c.teacher_id === teacher.id, cardClassId: mapped.length === 1 ? mapped[0].hr_class_id : null }; }), canCreate, canSendAll: admin,
         notices: (result.data || []).map(n => {
           const joined = Array.isArray(n.classes) ? n.classes[0] : n.classes;
           return { id: n.id, title: n.title, body: n.body, pinned: n.pinned, createdAt: n.created_at,
@@ -61,6 +63,10 @@ export async function POST(request: Request) {
     }
     if (input.intent === 'delete') {
       if (!uuid(input.noticeId)) fail('삭제할 공지를 확인해 주세요.');
+      const existing = await db.from('notices').select('id,author_id').eq('id', input.noticeId).maybeSingle();
+      if (existing.error) fail('공지 삭제 상태를 확인하지 못했습니다.', 503);
+      if (!existing.data) return NextResponse.json({ ok: true }, { headers });
+      if (existing.data.author_id !== teacher.id) fail('직접 작성한 공지만 삭제할 수 있습니다.', 403);
       const result = await db.from('notices').delete().eq('id', input.noticeId).eq('author_id', teacher.id).select('id');
       if (result.error) fail('공지를 삭제하지 못했습니다.', 503);
       if (!result.data?.length) fail('직접 작성한 공지만 삭제할 수 있습니다.', 403);
@@ -87,16 +93,21 @@ export async function POST(request: Request) {
     }
     if (!selectedClasses.length) fail('공지 발송 대상 반이 없습니다.');
     // Paginate before sending; do not silently truncate an academy-wide notice.
-    const students = new Set<string>();
+    const students = new Set<string>(), studentKeys = new Set<string>();
     for (let start = 0; start < selectedClasses.length; start += 100) {
       const ids = selectedClasses.slice(start, start + 100).map(c => c.id);
       for (let offset = 0; ; offset += 500) {
-        const page = await db.from('students').select('id').in('class_id', ids).eq('status', 'approved').order('id').range(offset, offset + 499);
+        const page = await db.from('students').select('id,hr_student_id').in('class_id', ids).eq('status', 'approved').order('id').range(offset, offset + 499);
         if (page.error || !page.data) fail('발송 대상을 확인하지 못했습니다.', 503);
-        for (const student of page.data) students.add(student.id);
+        for (const student of page.data) {
+          students.add(student.id);
+          studentKeys.add(student.hr_student_id && /^\d+$/.test(student.hr_student_id) ? 'card:' + student.hr_student_id
+            : student.id === process.env.PORTAL_TEST_SPEAKING_STUDENT && process.env.PORTAL_TEST_VOCA_SUBJECT ? 'test:voca:' + process.env.PORTAL_TEST_VOCA_SUBJECT : 'speaking:' + student.id);
+        }
         if (page.data.length < 500) break;
       }
     }
+    if (input.intent === 'audience') return NextResponse.json({ studentKeys: Array.from(studentKeys) }, { headers });
     if (input.intent === 'preview') return NextResponse.json({ target: target === 'all' ? '전체 반' : target === 'my_classes' ? '내가 담당하는 모든 반' : classNames.get(target), classCount: selectedClasses.length, studentCount: students.size }, { headers });
     const inserted = await db.from('notices').insert(notice).select('id').single();
     if (inserted.error?.code === '23505' && await findExisting()) return repeated();

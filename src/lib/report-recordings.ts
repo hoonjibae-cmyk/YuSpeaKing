@@ -75,13 +75,16 @@ export async function reportRecordingResponse(request:Request,db:Db,now=Date.now
   const file=fileResult.data?.find(f=>f.name===grant.student+'.wav');
   if(fileResult.error||!file||(file.updated_at||file.created_at)!==grant.uploadedAt)throw Error('RECORDING_REPLACED');
   const range=request.headers.get('range');if(range&&!/^bytes=(?:\d+-\d*|-\d+)$/.test(range))return new Response(null,{status:416,headers});
-  stage='signed-url';
-  const signed=await db.storage.from('submissions').createSignedUrl(sub.audio_path!,60);
-  if(signed.error||!signed.data?.signedUrl)throw Error('RECORDING_UNAVAILABLE');
-  const url=new URL(signed.data.signedUrl),storage=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!);
-  if(url.protocol!=='https:'||url.origin!==storage.origin||!url.pathname.startsWith('/storage/v1/object/sign/submissions/'))throw Error('RECORDING_UNAVAILABLE');
+  stage='storage-config';
+  const storage=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!),key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(storage.protocol!=='https:'||!key)throw Error('RECORDING_CONFIG');
+  const url=new URL('/storage/v1/object/authenticated/submissions/'+pathFor(sub),storage.origin);
+  // The report grant has already restricted this request to one current file.
+  // Authenticate only on the server: a second cached, short-lived signed URL can expire.
+  const storageHeaders:Record<string,string>={Authorization:'Bearer '+key,apikey:key};
+  if(range)storageHeaders.Range=range;
   stage='storage-response';
-  const media=await fetch(url,{headers:range?{Range:range}:{},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000)});
+  const media=await fetch(url,{headers:storageHeaders,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000)});
   upstreamStatus=media.status;
   if(media.status===416){const contentRange=media.headers.get('content-range');if(contentRange)headers.set('Content-Range',contentRange);return new Response(null,{status:416,headers});}
   if(![200,206].includes(media.status)||!media.body)throw Error('RECORDING_UNAVAILABLE');

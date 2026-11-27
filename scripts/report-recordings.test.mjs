@@ -30,7 +30,30 @@ test('recording capabilities reject altered/expired tokens before DB, wrong subj
   assert.equal((await reportRecordingResponse(new Request(url+token),restricted,now)).status,404);assert.ok(!restricted.reads.some(r=>r[0]==='sign'));
  }
 });
-test('private audio is streamed with byte ranges without a public bucket or storage redirect',async()=>{
- const previousFetch=global.fetch,db=database();global.fetch=async(url,options)=>{assert.equal(new URL(url).host,'fixture.supabase.co');assert.equal(options.headers.Range,'bytes=2-4');assert.equal(options.redirect,'error');return new Response(new Uint8Array([2,3,4]),{status:206,headers:{'content-range':'bytes 2-4/10','content-length':'3'}});};
- try{const response=await reportRecordingResponse(new Request('https://fixture.test?token='+recordingGrant(grant),{headers:{Range:'bytes=2-4'}}),db,now);assert.equal(response.status,206);assert.equal(response.headers.get('content-range'),'bytes 2-4/10');assert.equal(response.headers.get('cache-control'),'private, no-store');assert.equal(response.headers.get('location'),null);assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[2,3,4]);assert.ok(db.reads.some(r=>r[0]==='student_id'&&r[1]===sub.student_id));assert.ok(db.reads.some(r=>r[0]==='sign'&&r[2]===60));}finally{global.fetch=previousFetch;}
+test('private audio streams authenticated byte ranges without cached signed URLs or exposed credentials',async()=>{
+ const previousFetch=global.fetch,db=database();global.fetch=async(url,options)=>{
+  assert.equal(new URL(url).origin,'https://fixture.supabase.co');
+  assert.equal(new URL(url).pathname,'/storage/v1/object/authenticated/submissions/'+sub.audio_path);
+  assert.equal(new URL(url).search,'');assert.equal(options.headers.Authorization,'Bearer report-recording-test-only');
+  assert.equal(options.headers.apikey,'report-recording-test-only');assert.equal(options.headers.Range,'bytes=2-4');
+  assert.equal(options.redirect,'error');assert.equal(options.cache,'no-store');
+  return new Response(new Uint8Array([2,3,4]),{status:206,headers:{'content-range':'bytes 2-4/10','content-length':'3'}});
+ };
+ try{
+  const response=await reportRecordingResponse(new Request('https://fixture.test?token='+recordingGrant(grant),{headers:{Range:'bytes=2-4'}}),db,now);
+  assert.equal(response.status,206);assert.equal(response.headers.get('content-range'),'bytes 2-4/10');
+  assert.equal(response.headers.get('cache-control'),'private, no-store');assert.equal(response.headers.get('location'),null);
+  assert.ok(!JSON.stringify([...response.headers]).includes('report-recording-test-only'));
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[2,3,4]);
+  assert.ok(db.reads.some(r=>r[0]==='student_id'&&r[1]===sub.student_id));assert.ok(!db.reads.some(r=>r[0]==='sign'));
+ }finally{global.fetch=previousFetch;}
+});
+test('invalid ranges skip storage fetch and upstream failures do not leak private error bodies',async()=>{
+ const previousFetch=global.fetch;let calls=0;global.fetch=async()=>{calls++;return new Response('PRIVATE_STORAGE_ERROR',{status:401});};
+ try{
+  const url='https://fixture.test?token='+recordingGrant(grant);
+  assert.equal((await reportRecordingResponse(new Request(url,{headers:{Range:'bytes=0-1,5-6'}}),database(),now)).status,416);
+  assert.equal(calls,0);const failed=await reportRecordingResponse(new Request(url),database(),now);
+  assert.equal(failed.status,404);assert.ok(!(await failed.text()).includes('PRIVATE_STORAGE_ERROR'));
+ }finally{global.fetch=previousFetch;}
 });

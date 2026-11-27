@@ -7,7 +7,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTeacherContext, clearImpersonation } from "@/lib/teacher-context";
-import { resolveNoticeAudience } from "@/lib/notices";
 import { sendPushToStudents } from "@/lib/push";
 import { applyClassHandover, moveStudentToClass } from "@/lib/transfers";
 import { generateClassCode } from "@/lib/class-code";
@@ -696,93 +695,6 @@ export async function resolveTransfer(formData: FormData) {
 
   revalidatePath(back);
   redirect(back);
-}
-
-// ---------- 공지사항 ----------
-
-export async function createNotice(formData: FormData) {
-  const { db, effectiveId, role } = await getTeacherContext();
-  const title = String(formData.get("title") || "").trim();
-  const body = String(formData.get("body") || "").trim();
-  const pinned = formData.get("pinned") === "on";
-  // target: 'all' | 'my_classes' | 반 id
-  const target = String(formData.get("target") || "").trim();
-
-  if (!title) {
-    redirect(
-      `/teacher/notices?error=${encodeURIComponent("제목을 입력해 주세요")}`,
-    );
-  }
-
-  let scope: "class" | "my_classes" | "all" = "my_classes";
-  let classId: string | null = null;
-  if (target === "all") {
-    // 전체 공지는 운영자만
-    if (role !== "admin") {
-      redirect(
-        `/teacher/notices?error=${encodeURIComponent("전체 공지는 운영자만 쓸 수 있어요")}`,
-      );
-    }
-    scope = "all";
-  } else if (target === "my_classes") {
-    scope = "my_classes";
-  } else {
-    scope = "class";
-    classId = target;
-  }
-
-  const { data: notice, error } = await db
-    .from("notices")
-    .insert({
-      author_id: effectiveId,
-      scope,
-      class_id: classId,
-      title,
-      body,
-      pinned,
-    })
-    .select("id, scope, class_id, author_id")
-    .single();
-
-  if (error || !notice) {
-    redirect(
-      `/teacher/notices?error=${encodeURIComponent(error?.message || "공지 등록 실패")}`,
-    );
-  }
-
-  // 대상 학생에게 푸시 발송 (best-effort — 실패해도 공지는 등록됨)
-  try {
-    const audience = await resolveNoticeAudience({
-      scope: notice.scope,
-      class_id: notice.class_id,
-      author_id: notice.author_id,
-    });
-    const origin = appOrigin();
-    await sendPushToStudents(audience, {
-      title: `📢 ${title}`,
-      body: body.slice(0, 120) || "새 공지가 등록되었어요",
-      studentUrl: origin ? `${origin}/student/notices` : "/student/notices",
-      origin,
-    });
-  } catch (e) {
-    console.error("[공지] 푸시 발송 실패:", e);
-  }
-
-  revalidatePath("/teacher/notices");
-  redirect("/teacher/notices?posted=1");
-}
-
-export async function deleteNotice(formData: FormData) {
-  const { db, effectiveId } = await getTeacherContext();
-  const noticeId = String(formData.get("noticeId") || "");
-  if (noticeId) {
-    await db
-      .from("notices")
-      .delete()
-      .eq("id", noticeId)
-      .eq("author_id", effectiveId);
-  }
-  revalidatePath("/teacher/notices");
 }
 
 // ---------- 쿠폰/보상 설정 ----------

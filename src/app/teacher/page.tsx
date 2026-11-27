@@ -117,10 +117,10 @@ export default async function TeacherDashboard({
 
         <nav className="flex flex-wrap items-center gap-2">
           <Link
-            href="/teacher/notices"
+            href="https://learning.yussam.com/teacher/notices"
             className={`${navBtn} border-brand bg-brand-light font-medium text-brand hover:bg-blue-100`}
           >
-            📢 공지사항
+            📢 공지발송
           </Link>
           <Link
             href="/teacher/trend"

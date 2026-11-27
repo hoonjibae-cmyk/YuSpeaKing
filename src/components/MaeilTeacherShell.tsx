@@ -4,7 +4,7 @@ import {usePathname} from 'next/navigation';
 type Navigation={isAdmin?:boolean;supervisor?:boolean;workspace?:'management'|'teaching';programs?:string[];returnTo?:string};
 const portal='https://learning.yussam.com';
 const vocaMenu=[['/','홈'],['/study','단어 학습'],['/relations','유·반의어 학습'],['/library','공용 단어장'],['/admin/wordbooks','단어장 관리'],['/admin/classes','수업 운영'],['/admin/students','학생 계정'],['/admin/audit','변경 이력'],['/history','학습 기록']];
-const speakingMenu=[['/teacher','반 목록'],['/teacher/notices','공지사항'],['/teacher/trend','성적 추이'],['/teacher/coupons','쿠폰'],['/teacher/move','반 이동'],['/teacher/transfers','인수인계'],['/teacher/archived','보관반'],['/teacher/roster','명단 확인'],['/manual/teacher','사용 설명서']];
+const speakingMenu=[['/teacher','반 목록'],['/teacher/trend','성적 추이'],['/teacher/coupons','쿠폰'],['/teacher/move','반 이동'],['/teacher/transfers','인수인계'],['/teacher/archived','보관반'],['/teacher/roster','명단 확인'],['/manual/teacher','사용 설명서']];
 const symbols:Record<string,string>={dashboard:'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',programs:'M5 4h14v16H5z M9 4v16 M9 9h10',reports:'M5 3h10l4 4v14H5z M9 11h6 M9 15h6',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2',coupons:'M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4z M15 7v12',notices:'M4 9h4l11-4v14L8 15H4z M8 15l2 6',admin:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6'};
 export default function MaeilTeacherShell({app,initialEnabled=false}:{app:'speaking'|'voca';initialEnabled?:boolean}){
  const path=usePathname(),[navigation,setNavigation]=useState<Navigation>({});

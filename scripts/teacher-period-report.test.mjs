@@ -4,12 +4,26 @@ require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f
 const assignment={id:'task',title:'Fixture',created_at:'2026-11-02T00:00:00Z',due_date:'2026-11-23'};
 const sub={id:'sub',student_id:'own',assignment_id:'task',created_at:'2026-11-23T00:00:00Z',status:'evaluated',overall_score:88,azure_scores:{accuracy:90,fluency:85,completeness:100,prosody:70,words:[{word:'benefit',errorType:'Mispronunciation',accuracy:50}]}};
 const reads=[];const db={from(table){const filters=[];reads.push({table,filters});const q={};q.select=()=>q;q.limit=()=>q;q.order=()=>q;q.range=()=>q;for(const method of ['eq','in','gte','lt','or'])q[method]=(k,v)=>{filters.push([method,k,v]);return q;};q.then=resolve=>Promise.resolve({data:table==='students'?[{id:'own',hr_student_id:'123'}]:table==='assignments'?[assignment]:[sub],count:1,error:null}).then(resolve);return q;}};
-const original=Module._load;Module._load=function(name,parent,main){if(name==='@/lib/period-report-evidence')return require(path.join(repo,'src/lib/period-report-evidence.ts'));if(name==='@/lib/supabase/admin')return {createAdminClient:()=>db};if(name==='../teacher-dashboard/route')return {POST:async request=>{const input=await request.json();return input.proof==='fixture'?Response.json({classes:[{id:'owned-class',cardClassId:'aca:123'}]}):Response.json({error:'AUTH'},{status:401});}};return original.call(this,name,parent,main);};const {POST}=require(path.join(repo,'src/app/api/learning-portal/teacher-period-report/route.ts'));Module._load=original;
+const recordingReads=[];
+const original=Module._load;Module._load=function(name,parent,main){if(name==='@/lib/report-recordings')return {weeklyRecordings:async(...args)=>{recordingReads.push(args);return new Map([['own',{recordings:[{id:'own-audio'}],recordingsUnavailable:false}],['foreign',{recordings:[{id:'foreign-audio'}]}]]);}};if(name==='@/lib/period-report-evidence')return require(path.join(repo,'src/lib/period-report-evidence.ts'));if(name==='@/lib/supabase/admin')return {createAdminClient:()=>db};if(name==='../teacher-dashboard/route')return {POST:async request=>{const input=await request.json();return input.proof==='fixture'?Response.json({classes:[{id:'owned-class',cardClassId:'aca:123'}]}):Response.json({error:'AUTH'},{status:401});}};return original.call(this,name,parent,main);};const {POST}=require(path.join(repo,'src/app/api/learning-portal/teacher-period-report/route.ts'));Module._load=original;
 test('period source requires verified class mapping and bounds every submission query to its current students and period',async()=>{const request=input=>new Request('https://fixture.test',{method:'POST',body:JSON.stringify({proof:'fixture',cardClassId:'aca:123',from:'2026-11-01',until:'2026-12-01',...input})});
  assert.equal((await POST(request({proof:'invalid'}))).status,401);assert.equal(reads.length,0);
  assert.equal((await (await POST(request({cardClassId:'aca:foreign'}))).json()).connected,false);assert.equal(reads.length,0);
  const r=await POST(request({studentId:'foreign'}));assert.equal(r.status,200);const value=await r.json();assert.equal(value.version,2);assert.equal(value.students[0].score,88);assert.equal(value.students[0].submissions,1);assert.equal(value.students[0].dimensions.accuracy,90);
  assert.deepEqual(reads[0].filters,[['eq','class_id','owned-class'],['eq','status','approved']]);assert.ok(reads[1].filters.some(f=>f[1]==='class_id'&&f[2]==='owned-class'));assert.ok(reads[2].filters.some(f=>f[1]==='student_id'&&f[2][0]==='own'));assert.ok(reads[2].filters.some(f=>f[0]==='or'&&f[1].includes('created_at.gte.2026-11-01')));
+});
+test('recordings are authorized and weekly-only; ordinary and monthly reports avoid storage work',async()=>{
+ const request=input=>new Request('https://fixture.test',{method:'POST',body:JSON.stringify({proof:'fixture',cardClassId:'aca:123',from:'2026-11-23',until:'2026-11-30',includeRecordings:true,...input})});
+ recordingReads.length=0;
+ assert.equal((await POST(request({proof:'invalid'}))).status,401);
+ await POST(request({cardClassId:'aca:foreign'}));
+ await POST(request({includeRecordings:false}));
+ await POST(request({from:'2026-11-01',until:'2026-12-01'}));
+ assert.equal(recordingReads.length,0);
+ const result=await (await POST(request({studentId:'foreign'}))).json();
+ assert.equal(recordingReads.length,1);assert.deepEqual(recordingReads[0].slice(1),[[assignment],[sub],'2026-11-23','2026-11-30']);
+ assert.deepEqual(result.students[0].recordings,[{id:'own-audio'}]);assert.equal(result.students.length,1);
+ assert.ok(!JSON.stringify(result).includes('foreign-audio'));
 });
 test('reading evidence deduplicates submissions and excludes foreign records and truncated omissions',()=>{
  const {speakingPeriodEvidence}=require(path.join(repo,'src/lib/period-report-evidence.ts'));

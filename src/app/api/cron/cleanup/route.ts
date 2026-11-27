@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { applyDueTransfers } from "@/lib/transfers";
+import { RECORDING_RETENTION_DAYS } from "@/lib/recording-retention";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const RETENTION_DAYS = 60;
+const RETENTION_DAYS = RECORDING_RETENTION_DAYS;
 
 // 60일 지난 녹음 음원을 삭제한다(점수·피드백은 유지).
 // Vercel Cron 이 매일 호출. CRON_SECRET 로 보호.

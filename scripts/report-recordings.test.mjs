@@ -11,12 +11,13 @@ const submission=(n=1,assignment=20)=>({id:id(n),student_id:id(n+100),assignment
 const sub=submission(),grant={v:1,id:sub.id,student:sub.student_id,assignment:sub.assignment_id,uploadedAt,expiresAt:Date.parse(recordingRetainsUntil(sub.created_at))};
 function database(row=sub,fileAt=uploadedAt){const reads=[],db={reads,from(table){reads.push(['table',table]);const q={};q.select=()=>q;q.eq=(...a)=>{reads.push(a);return q;};q.maybeSingle=async()=>({data:row,error:null});return q;},storage:{from(bucket){assert.equal(bucket,'submissions');return {list:async(folder)=>{reads.push(['folder',folder]);return {data:[{name:sub.student_id+'.wav',updated_at:fileAt}],error:null};},createSignedUrl:async(p,expiry)=>{reads.push(['sign',p,expiry]);return {data:{signedUrl:'https://fixture.supabase.co/storage/v1/object/sign/submissions/'+p+'?token=fixture'},error:null};}};}}};return db;}
 test('weekly recordings use real upload time, deduplicate assignments, ignore foreign data and retain original 60-day deadline',async()=>{
- const rows=[sub,{...sub,id:id(9),updated_at:'2026-11-24T02:00:00Z'},submission(2),submission(3),{...submission(4),created_at:'2026-09-01T02:00:00Z'},submission(5,99)];
+ const rows=[{...sub,teacher_feedback:'Reviewed feedback',teacher_reviewed:true},{...sub,id:id(9),updated_at:'2026-11-24T02:00:00Z',teacher_feedback:'Old duplicate feedback',teacher_reviewed:true},submission(2),submission(3),{...submission(4),created_at:'2026-09-01T02:00:00Z',teacher_feedback:'Unreviewed private draft',teacher_reviewed:false},submission(5,99)];
  let lists=0;const fileDates={[id(101)]:uploadedAt,[id(102)]:'2026-11-22T14:59:59Z',[id(103)]:'2026-11-30T00:00:00Z',[id(104)]:uploadedAt};
  const db={storage:{from(){return {list:async folder=>{lists++;assert.equal(folder,id(20));return {data:Object.entries(fileDates).map(([name,updated_at])=>({name:name+'.wav',updated_at})),error:null};}};}}};
  const result=await weeklyRecordings(db,[{id:id(20),title:'Fixture'}],rows,'2026-11-23','2026-11-30',now);
  assert.equal(lists,1);assert.equal(result.get(id(101)).recordings.length,1);assert.equal(result.get(id(101)).recordings[0].id,sub.id);
  assert.equal(result.get(id(101)).recordings[0].retainsUntil,'2026-12-31T02:00:00.000Z');
+ assert.equal(result.get(id(101)).recordings[0].teacherFeedback,'Reviewed feedback');assert.equal(result.get(id(104)).recordings[0].teacherFeedback,null);
  assert.equal(result.get(id(102)).recordings.length,0);assert.equal(result.get(id(103)).recordings.length,0);assert.equal(result.get(id(104)).recordings[0].audioUrl,null);assert.equal(result.has(id(105)),false);
  assert.equal(verifyRecordingGrant(new URL(result.get(id(101)).recordings[0].audioUrl).searchParams.get('token'),now).uploadedAt,uploadedAt);
 });

@@ -4,9 +4,9 @@ import {createAdminClient} from '@/lib/supabase/admin';
 import {recordingRetainsUntil} from '@/lib/recording-retention';
 
 type Db=ReturnType<typeof createAdminClient>;
-type Submission={id:string;assignment_id:string;student_id:string;created_at:string;updated_at?:string|null;status:string;audio_path?:string|null;audio_expired?:boolean|null};
+type Submission={id:string;assignment_id:string;student_id:string;created_at:string;updated_at?:string|null;status:string;audio_path?:string|null;audio_expired?:boolean|null;teacher_feedback?:string|null;teacher_reviewed?:boolean};
 type StoredFile={name:string;updated_at?:string|null;created_at?:string|null;id?:string|null};
-export type ReportRecording={id:string;title:string;submittedAt:string;retainsUntil:string;audioUrl:string|null};
+export type ReportRecording={id:string;title:string;submittedAt:string;retainsUntil:string;audioUrl:string|null;teacherFeedback:string|null};
 type Grant={v:1;id:string;student:string;assignment:string;uploadedAt:string;expiresAt:number};
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(v);
 function signature(value:string){const key=process.env.SUPABASE_SERVICE_ROLE_KEY;if(!key)throw Error('RECORDING_CONFIG');return createHmac('sha256',key).update('weekly-report-recording-v1:'+value).digest('hex');}
@@ -53,7 +53,7 @@ export async function weeklyRecordings(db:Db,assignments:{id:string;title:string
    const retainsUntil=recordingRetainsUntil(sub.created_at),expiresAt=Date.parse(retainsUntil);
    const available=!!file&&!sub.audio_expired&&expiresAt>now;
    const token=available?recordingGrant({v:1,id:sub.id,student:sub.student_id,assignment:sub.assignment_id,uploadedAt:submittedAt,expiresAt}):null;
-   result.recordings.push({id:sub.id,title:titles.get(sub.assignment_id)||'유스피킹 과제',submittedAt,retainsUntil,
+   result.recordings.push({id:sub.id,title:titles.get(sub.assignment_id)||'유스피킹 과제',submittedAt,retainsUntil,teacherFeedback:sub.teacher_reviewed&&sub.teacher_feedback?.trim()?sub.teacher_feedback.slice(0,2000):null,
     audioUrl:token?'https://yuspeaking.yussam.com/api/learning-portal/report-recording?token='+token:null});
   }
  }));
@@ -63,24 +63,34 @@ export async function weeklyRecordings(db:Db,assignments:{id:string;title:string
 
 export async function reportRecordingResponse(request:Request,db:Db,now=Date.now()){
  const headers=new Headers({'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
+ let stage='grant',upstreamStatus:number|undefined;
  try{
   const grant=verifyRecordingGrant(new URL(request.url).searchParams.get('token')||'',now);
+  stage='submission';
   const result=await db.from('submissions').select('id,student_id,assignment_id,audio_path,audio_expired,created_at,status').eq('id',grant.id).eq('student_id',grant.student).eq('assignment_id',grant.assignment).maybeSingle();
   const sub=result.data as Submission|null;
   if(result.error||!sub||sub.id!==grant.id||sub.student_id!==grant.student||sub.assignment_id!==grant.assignment||sub.audio_expired||sub.audio_path!==pathFor(sub)||Date.parse(recordingRetainsUntil(sub.created_at))<=now)throw Error('RECORDING_UNAVAILABLE');
+  stage='file-version';
   const fileResult=await db.storage.from('submissions').list(grant.assignment,{limit:100,search:grant.student+'.wav'});
   const file=fileResult.data?.find(f=>f.name===grant.student+'.wav');
   if(fileResult.error||!file||(file.updated_at||file.created_at)!==grant.uploadedAt)throw Error('RECORDING_REPLACED');
   const range=request.headers.get('range');if(range&&!/^bytes=(?:\d+-\d*|-\d+)$/.test(range))return new Response(null,{status:416,headers});
+  stage='signed-url';
   const signed=await db.storage.from('submissions').createSignedUrl(sub.audio_path!,60);
   if(signed.error||!signed.data?.signedUrl)throw Error('RECORDING_UNAVAILABLE');
   const url=new URL(signed.data.signedUrl),storage=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!);
   if(url.protocol!=='https:'||url.origin!==storage.origin||!url.pathname.startsWith('/storage/v1/object/sign/submissions/'))throw Error('RECORDING_UNAVAILABLE');
+  stage='storage-response';
   const media=await fetch(url,{headers:range?{Range:range}:{},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000)});
+  upstreamStatus=media.status;
   if(media.status===416){const contentRange=media.headers.get('content-range');if(contentRange)headers.set('Content-Range',contentRange);return new Response(null,{status:416,headers});}
   if(![200,206].includes(media.status)||!media.body)throw Error('RECORDING_UNAVAILABLE');
   headers.set('Content-Type','audio/wav');headers.set('Accept-Ranges','bytes');
   for(const name of ['content-length','content-range']){const value=media.headers.get(name);if(value)headers.set(name,value);}
   return new Response(media.body,{status:media.status,headers});
- }catch{return new Response('녹음 파일을 재생할 수 없습니다. 보관 기한이 지났거나 파일이 교체되었을 수 있습니다.',{status:404,headers});}
+ }catch{
+  // Diagnose playback without putting student identifiers, audio URLs or tokens in logs.
+  if(stage!=='grant')console.warn('report-recording unavailable',{stage,upstreamStatus});
+  return new Response('녹음 파일을 재생할 수 없습니다. 보관 기한이 지났거나 파일이 교체되었을 수 있습니다.',{status:404,headers});
+ }
 }

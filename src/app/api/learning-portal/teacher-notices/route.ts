@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       const links = allowedClasses.length ? await db.from('class_links').select('class_id,hr_class_id').in('class_id', allowedClasses.map(c => c.id)) : { data: [], error: null };
       if (links.error) fail('반 연결 정보를 불러오지 못했습니다.', 503);
       let query = db.from('notices').select('id,author_id,scope,class_id,title,body,pinned,created_at,classes(name)').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50);
-      if (!overview) query = query.or(`author_id.eq.${teacher.id},scope.eq.all`);
+      if (!overview) query = query.eq('author_id', teacher.id);
       const result = await query;
       if (result.error) fail('공지 이력을 불러오지 못했습니다.', 503);
       return NextResponse.json({

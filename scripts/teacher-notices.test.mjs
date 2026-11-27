@@ -28,7 +28,19 @@ const send=(input={})=>POST(new Request('https://source.test/api/learning-portal
 const draft={intent:'create',requestId,target:ownClass,title:'  새 공지  ',body:'내용',pinned:true,author_id:foreign};
 
 test('unauthenticated identities never reach the notice DB; duplicate teacher mapping is denied',async()=>{assert.equal((await send({proof:null})).status,401);identity.allowed=false;assert.equal((await send()).status,403);assert.equal(dbCalls,0);identity.allowed=true;table.teachers.push({...table.teachers[0],id:id(99)});assert.equal((await send()).status,403);});
-test('teacher list is scoped to authored/global notices, supervisor overview never grants foreign delete rights',async()=>{const ownList=await(await send()).json();assert.equal(ownList.notices.length,1);assert.equal(ownList.classes.length,1);assert.equal(ownList.canSendAll,false);identity.supervisor=true;const overview=await(await send()).json();assert.equal(overview.notices.length,2);assert.ok(overview.notices.every(n=>!n.canDelete));assert.equal(overview.classes.length,2);assert.equal(overview.canSendAll,true);});
+test('teacher history includes only own notices regardless of target; managers see every author without foreign delete rights',async()=>{
+ table.notices.push({id:id(20),author_id:own,scope:'class',class_id:foreignClass,title:'내가 이전에 작성한 공지'},
+  {id:id(21),author_id:own,scope:'all',title:'내가 작성한 전체 공지'},
+  {id:id(22),author_id:foreign,scope:'class',class_id:ownClass,title:'내 반에 온 다른 선생님 공지'});
+ const ownList=await(await send({author_id:foreign,target:'all'})).json();
+ assert.deepEqual(ownList.notices.map(n=>n.id),[id(20),id(21)]);assert.equal(ownList.classes.length,1);assert.equal(ownList.canSendAll,false);
+ for(const manager of [{supervisor:true},{department:'경영지원'}]){
+  identity={allowed:true,email:'own@example.test',department:'교수부',...manager};table.teachers[0].role='admin';
+  const overview=await(await send()).json();assert.equal(overview.notices.length,5);assert.ok(overview.notices.filter(n=>![id(20),id(21)].includes(n.id)).every(n=>!n.canDelete));assert.equal(overview.classes.length,2);
+ }
+ identity.viewOnly=true;identity.supervisor=true;
+ const delegated=await(await send()).json();assert.deepEqual(delegated.notices.map(n=>n.id),[id(20),id(21)]);assert.ok(delegated.notices.every(n=>!n.canDelete));
+});
 test('delegated identities can read but cannot preview, register or delete',async()=>{identity.viewOnly=true;assert.equal((await send()).status,200);for(const intent of ['preview','create','delete'])assert.equal((await send({...draft,intent})).status,403);assert.equal(pushes.length,0);});
 test('foreign class and academy-wide delivery require verified scope',async()=>{assert.equal((await send({...draft,target:foreignClass})).status,403);assert.equal((await send({...draft,target:'all'})).status,403);identity.department='경영지원';table.teachers[0].role='admin';const preview=await(await send({...draft,intent:'preview',target:'all'})).json();assert.equal(preview.studentCount,2);assert.equal(preview.classCount,2);assert.equal(pushes.length,0);});
 test('preview counts only approved target students without sending, creating or exposing their identities',async()=>{const result=await(await send({...draft,intent:'preview'})).json();assert.equal(result.studentCount,1);assert.equal(JSON.stringify(result).includes(id(5)),false);assert.equal(table.notices.length,2);assert.equal(pushes.length,0);});

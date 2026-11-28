@@ -1,4 +1,4 @@
-export const MIN_SENTENCES = 1;
+export const MIN_SENTENCES = 10;
 export const MAX_SENTENCES = 15;
 export const DEFAULT_SENTENCES = 10;
 export const MAX_SOURCE_LENGTH = 30000;

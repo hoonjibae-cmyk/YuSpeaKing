@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MAX_SENTENCES, MAX_SOURCE_LENGTH, type SelectionMode } from "@/lib/ai/sentence-selection";
+import { MIN_SENTENCES, MAX_SENTENCES, MAX_SOURCE_LENGTH, type SelectionMode } from "@/lib/ai/sentence-selection";
 import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import SampleVoiceSelect from "@/components/SampleVoiceSelect";
@@ -354,7 +354,7 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
             onChange={(e) => { setSentenceLimit(Number(e.target.value)); clearSelection(); }}
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
           >
-            {Array.from({ length: MAX_SENTENCES }, (_, index) => index + 1).map((n) => (
+            {Array.from({ length: MAX_SENTENCES - MIN_SENTENCES + 1 }, (_, index) => index + MIN_SENTENCES).map((n) => (
               <option key={n} value={n}>
                 {n}문장
               </option>

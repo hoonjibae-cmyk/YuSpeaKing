@@ -3,3 +3,26 @@ body:has(.maeil-assignment-popup){min-height:0;background:#fff;}
 .maeil-assignment-popup input,.maeil-assignment-popup select,.maeil-assignment-popup textarea{font-size:16px;}
 .maeil-assignment-popup button{min-height:44px;}
 body:has(.maeil-assignment-popup)>.no-print{display:none;}
+/* Assignment authoring shares the HaruReview typography scale. */
+html body .passage-composer,html body .maeil-assignment-popup{font-family:MaeilPretendard,'Apple SD Gothic Neo',sans-serif;font-size:14px;font-weight:400;line-height:1.6}
+html body .passage-composer .passage-composer-fields{min-width:0;margin:0;padding:0;border:0}
+html body .passage-composer h2{font-size:17px;font-weight:600;line-height:1.5;margin:20px 0 12px}
+html body .passage-composer h2:first-of-type{margin-top:0}
+html body .passage-composer :is(label,legend,p,small,summary){font-size:13px;line-height:1.65}
+html body .passage-composer :is(label,legend){font-weight:500}
+html body .passage-composer :is(p,small){font-weight:400}
+html body .maeil-assignment-popup>p,html body .passage-composer :is(span.text-xs,li.text-xs){font-size:13px;line-height:1.65}
+html body .passage-composer :is(button,select,input,textarea){font-family:inherit;max-width:100%;min-width:0}
+html body .passage-composer button{font-size:14px;font-weight:500;line-height:1.5;min-height:44px;white-space:normal;padding:9px 12px;border-radius:8px}
+html body .passage-composer :is(input:not([type=hidden]):not([type=radio]):not([type=checkbox]):not([type=file]),select,textarea){font-size:16px;font-weight:400;line-height:1.5;min-height:44px;padding:9px 12px;border-radius:8px}
+html body .passage-composer input[type=radio]{width:18px;height:18px;min-height:18px;padding:0;flex:0 0 18px;accent-color:#2448e8}
+html body .passage-composer .passage-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0;padding:0;border:0}
+html body .passage-composer .passage-methods legend{margin-bottom:8px}
+html body .passage-composer .passage-methods label{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #dce4f5;border-radius:10px;cursor:pointer}
+html body .passage-composer .passage-methods label.selected{background:#f0f3ff;border-color:#94a5ff}
+html body .passage-composer .passage-methods strong{display:block;font-size:14px;font-weight:600}
+html body .passage-composer .passage-methods small{display:block;color:#65718c;margin-top:4px}
+html body .passage-composer :is(textarea,input)::placeholder{font-size:inherit;font-weight:400}
+html body .passage-composer textarea[readonly]{background:#f8faff}
+html body .passage-composer :focus-visible{outline:2px solid #92a3ff;outline-offset:2px}
+@media(max-width:600px){html body .passage-composer h2{font-size:16px}html body .passage-composer .passage-methods{grid-template-columns:minmax(0,1fr)}html body main.maeil-assignment-popup{padding:12px}html body .passage-composer label:has(input[type=date]){display:grid;gap:6px;width:100%}html body .passage-composer input[type=date]{margin:0;width:100%}}

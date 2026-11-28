@@ -1,55 +1,29 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  selectSentences,
-  clampSentenceLimit,
-} from "@/lib/ai/select-sentences";
+import { selectSentences } from "@/lib/ai/select-sentences";
+import { prepareSelection, SelectionInputError, SelectionOutputError } from "@/lib/ai/sentence-selection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-// 본문 텍스트 → AI가 초6 난이도·고유명사 필터로 핵심 문장 선별 (교사 인증 필요)
 export async function POST(req: Request) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "로그인이 필요해요." }, { status: 401 });
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "로그인이 필요해요." }, { status: 401 });
+  const { data: teacher, error: teacherError } = await supabase.from("teachers").select("role,status").eq("id", user.id).maybeSingle();
+  if (teacherError || !teacher || (teacher.role !== "admin" && (teacher.role !== "teacher" || teacher.status !== "approved"))) {
+    return NextResponse.json({ error: "승인된 선생님 또는 관리자만 과제를 만들 수 있어요." }, { status: 403 });
   }
-
-  const { text, limit } = (await req.json().catch(() => ({}))) as {
-    text?: string;
-    limit?: number;
-  };
-  const source = String(text ?? "").trim();
-  // 클라이언트 값을 그대로 믿지 않고 허용 범위로 가둔다
-  const count = clampSentenceLimit(limit);
-  if (source.length < 20) {
-    return NextResponse.json(
-      { error: "본문이 너무 짧아요. 지문을 붙여넣거나 PDF를 올려 주세요." },
-      { status: 400 }
-    );
-  }
-
+  const input = await req.json().catch(() => null);
   try {
-    const result = await selectSentences(source, count);
-    if (result.selected.length === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "적합한 문장을 찾지 못했어요. 본문을 확인하거나 직접 문장을 골라 주세요.",
-        },
-        { status: 422 }
-      );
+    const prepared = prepareSelection(input?.text, input?.mode, input?.limit);
+    return NextResponse.json(await selectSentences(input.text, prepared.limit, prepared.mode));
+  } catch (error) {
+    if (error instanceof SelectionInputError || error instanceof SelectionOutputError) {
+      return NextResponse.json({ error: error.message }, { status: error instanceof SelectionInputError ? 400 : 422 });
     }
-    return NextResponse.json(result);
-  } catch (e) {
-    console.error("[select-sentences] 실패:", e);
-    return NextResponse.json(
-      { error: "문장 선별에 실패했어요. (Anthropic 키 확인)" },
-      { status: 500 }
-    );
+    console.error("[select-sentences] 생성 실패", error instanceof Error ? error.name : "unknown");
+    return NextResponse.json({ error: "문장 생성에 실패했어요. 잠시 후 다시 시도해 주세요." }, { status: 502 });
   }
 }

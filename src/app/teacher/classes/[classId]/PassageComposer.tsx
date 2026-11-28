@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MAX_SENTENCES, MAX_SOURCE_LENGTH, type SelectionMode } from "@/lib/ai/sentence-selection";
 import { createAssignment } from "../../actions";
 import SubmitButton from "@/components/SubmitButton";
 import SampleVoiceSelect from "@/components/SampleVoiceSelect";
@@ -46,8 +47,6 @@ async function shrinkPhoto(file: File): Promise<Blob> {
   }
 }
 
-// 과제 한 개에 넣을 수 있는 최대 문장 수 (녹음 시간 상한과 맞춰 둔 값)
-const MAX_SENTENCES = 15;
 interface Excluded {
   sentence: string;
   reason: string;
@@ -60,15 +59,18 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
   const [selected, setSelected] = useState<string[]>([]);
   const [excluded, setExcluded] = useState<Excluded[]>([]);
   const [aiRan, setAiRan] = useState(false);
-  // 반 수준에 따라 문장 수를 10~15개에서 고른다
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("extract");
   const [sentenceLimit, setSentenceLimit] = useState(10);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 최종 지문: AI로 문장을 골랐으면 그 문장들, 아니면 원문 전체
-  const passage = (selected.length ? selected.join("\n") : source).trim();
+  // 생성되지 않았거나 결과를 모두 지운 경우 원문 전체를 등록하지 않는다.
+  const passage = (aiRan ? selected.join("\n") : "").trim();
+  const busy = saving || aiLoading || pdfLoading || photoLoading;
+  const canSave = !!passage && selected.every(sentence => sentence.trim());
+  function clearSelection() { setSelected([]); setExcluded([]); setAiRan(false); setError(null); }
   // 사진 읽기에서 못 읽은 단어 표시 — 그대로 등록되면 학생이 '[?]' 를 읽게 된다
   const unreadable = passage.includes("[?]");
 
@@ -154,17 +156,19 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
   }
 
   async function runAI() {
+    if (busy) return;
     if (passageSourceEmpty()) {
       setError("먼저 지문을 입력하거나 PDF·사진을 올려 주세요.");
       return;
     }
     setError(null);
+    clearSelection();
     setAiLoading(true);
     try {
       const res = await fetch("/api/teacher/select-sentences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: source, limit: sentenceLimit }),
+        body: JSON.stringify({ text: source, limit: sentenceLimit, mode: selectionMode }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "문장 선별 실패");
@@ -208,13 +212,15 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
   }
 
   return (
-    <div className="space-y-3">
+    <div className="passage-composer" aria-busy={busy}>
+      <fieldset className="passage-composer-fields space-y-3" disabled={busy}>
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
           {error}
         </p>
       )}
 
+      <h2>1. 출제 자료</h2>
       {/* 1. 입력 방식 선택 */}
       <div className="flex gap-2">
         <button
@@ -307,6 +313,8 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
 
       {/* 원문(교과서 본문) — 타이핑 또는 PDF 추출 결과, 편집 가능 */}
       <textarea
+        aria-label="전체 영어 지문"
+        maxLength={MAX_SOURCE_LENGTH}
         value={source}
         onChange={(e) => {
           setSource(e.target.value);
@@ -320,21 +328,33 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
             ? "PDF를 올리면 여기에 본문이 채워져요. 필요하면 직접 수정할 수 있어요."
             : mode === "photo"
               ? "사진을 올리면 여기에 본문이 채워져요. 필요하면 직접 수정할 수 있어요."
-              : `교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 AI가 핵심 ${sentenceLimit}문장을 골라줍니다.`
+              : `교과서 본문(한 챕터, 수십 문장)을 붙여넣으세요. 아래에서 출제 방식과 문장 수를 선택하세요.`
         }
         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
       />
 
-      {/* 2. AI 문장 선별 */}
+      <h2>2. 문장 구성</h2>
+      <fieldset className="passage-methods">
+        <legend>출제 방식</legend>
+        <label className={selectionMode === "extract" ? "selected" : ""}>
+          <input type="radio" name="sentence-mode" value="extract" checked={selectionMode === "extract"} onChange={() => { setSelectionMode("extract"); clearSelection(); }}/>
+          <span><strong>원문 그대로 추출</strong><small>전체 지문의 중요한 문장을 표현 변경 없이 고릅니다.</small></span>
+        </label>
+        <label className={selectionMode === "summarize" ? "selected" : ""}>
+          <input type="radio" name="sentence-mode" value="summarize" checked={selectionMode === "summarize"} onChange={() => { setSelectionMode("summarize"); clearSelection(); }}/>
+          <span><strong>요약문 만들기</strong><small>전체 내용을 파악해 핵심을 새로운 문장으로 요약합니다.</small></span>
+        </label>
+      </fieldset>
+      {/* 2. AI 문장 구성 */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-xs text-slate-500">
           문장 수
           <select
             value={sentenceLimit}
-            onChange={(e) => setSentenceLimit(Number(e.target.value))}
+            onChange={(e) => { setSentenceLimit(Number(e.target.value)); clearSelection(); }}
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
           >
-            {[10, 11, 12, 13, 14, 15].map((n) => (
+            {Array.from({ length: MAX_SENTENCES }, (_, index) => index + 1).map((n) => (
               <option key={n} value={n}>
                 {n}문장
               </option>
@@ -344,17 +364,16 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
         <button
           type="button"
           onClick={runAI}
-          disabled={aiLoading || passageSourceEmpty()}
+          disabled={busy || passageSourceEmpty()}
           className="min-w-0 flex-1 rounded-lg border border-brand bg-brand-light py-2 text-sm font-semibold text-brand transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {aiLoading
-            ? "AI가 문장 고르는 중… (십여 초)"
-            : `✨ AI로 중요한 ${sentenceLimit}문장 뽑기`}
+            ? "AI가 문장을 구성하는 중…"
+            : selectionMode === "extract" ? `중요 문장 ${sentenceLimit}개 그대로 추출` : `요약문 ${sentenceLimit}개 만들기`}
         </button>
       </div>
       <p className="text-[11px] text-slate-400">
-        초6에게 너무 어려운 단어·고유명사가 든 문장은 자동으로 제외돼요. 뽑은 뒤
-        직접 지우거나 고칠 수 있어요.
+        {selectionMode === "extract" ? "원문 표현과 등장 순서를 유지합니다. 추출 후 문장을 빼거나 제외된 문장을 다시 넣을 수 있어요." : "원문 내용에 근거해 요약합니다. 생성된 문장을 확인하고 필요하면 직접 수정할 수 있어요."}
       </p>
       {sentenceLimit > 12 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
@@ -369,11 +388,11 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-semibold text-brand">
-              선별된 문장 {selected.length}개
+              {selectionMode === "extract" ? "추출한 문장" : "요약 문장"} {selected.length}개
             </span>
             {selected.length === 0 && (
               <span className="text-xs text-amber-600">
-                직접 문장을 입력해 주세요
+                문장을 다시 생성해 주세요
               </span>
             )}
           </div>
@@ -384,6 +403,8 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
                   {i + 1}
                 </span>
                 <textarea
+                  aria-label={`${i + 1}번 문장`}
+                  readOnly={selectionMode === "extract"}
                   value={s}
                   onChange={(e) => editSentence(i, e.target.value)}
                   rows={1}
@@ -437,12 +458,13 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
         </div>
       )}
 
+      <h2>3. 과제 정보</h2>
       {/* 3. 과제 정보 + 등록 */}
       <form
         action={popupRequestId ? undefined : createAssignment}
         onSubmit={popupRequestId ? async (event) => {
           event.preventDefault();
-          if(saving)return;
+          if(busy || !canSave || unreadable)return;
           const form=new FormData(event.currentTarget);
           setSaving(true);setError(null);
           window.parent.postMessage({type:'maeil-speaking-popup-busy',classId,busy:true},'https://learning.yussam.com');
@@ -459,6 +481,7 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
         <input type="hidden" name="classId" value={classId} />
         <input type="hidden" name="passage_text" value={passage} />
         <input
+          aria-label="과제 제목"
           name="title"
           placeholder="과제 제목 (예: Unit 3 - My Day)"
           required
@@ -490,16 +513,16 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
           </p>
         ) : passage ? (
           <p className="text-[11px] text-slate-400">
-            최종 지문 {passage.split("\n").filter(Boolean).length}문장 · 등록 시
+            최종 지문 {selected.filter(sentence => sentence.trim()).length}문장 · 등록 시
             원어민 샘플 음성이 자동 생성돼요.
           </p>
         ) : (
           <p className="text-[11px] text-amber-600">
-            지문을 입력하거나 AI로 문장을 선별하면 등록할 수 있어요.
+            위에서 출제 방식과 문장 수를 선택해 문장을 구성해 주세요.
           </p>
         )}
 
-        {passage && !unreadable && (popupRequestId ? <button type="submit" disabled={saving||!wavenetEnabled} className="w-full rounded-lg bg-brand py-2 font-medium text-white disabled:opacity-50">{saving?'등록·샘플음성 생성 중…':'등록 (샘플음성 생성)'}</button> :
+        {canSave && !unreadable && (popupRequestId ? <button type="submit" disabled={busy||!wavenetEnabled} className="w-full rounded-lg bg-brand py-2 font-medium text-white disabled:opacity-50">{saving?'등록·샘플음성 생성 중…':'등록 (샘플음성 생성)'}</button> :
           <SubmitButton
             pendingText="샘플음성 만드는 중… (몇 초 걸려요)"
             className="w-full rounded-lg bg-brand py-2 font-medium text-white hover:bg-brand-dark"
@@ -508,6 +531,7 @@ export default function PassageComposer({ classId, wavenetEnabled = false, popup
           </SubmitButton>
         )}
       </form>
+      </fieldset>
     </div>
   );
 }

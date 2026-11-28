@@ -79,6 +79,7 @@ export interface Submission {
 
 // 학생 세션 (로그인 후 서명 쿠키에 담기는 페이로드)
 export interface StudentSession {
+  programSession?: string;
   studentId: string;
   classId: string;
   name: string;

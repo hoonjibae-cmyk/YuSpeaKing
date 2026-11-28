@@ -1,20 +1,10 @@
 import "server-only";
-import { portalEnabled } from "./learning-portal";
-const voca = "https://ylmekshcospqexruztbv.supabase.co";
-export async function verifyPortalIdentity(authorization: string | null): Promise<{userId:string;cardId:string|null;isTest:boolean}> {
- if (!portalEnabled() || !process.env.VOCA_PUBLISHABLE_KEY) throw new Error("포탈 리포트 연결을 준비 중입니다.");
- if (!authorization?.startsWith("Bearer ") || authorization.length > 8192) throw new Error("학생 로그인이 필요합니다.");
- const headers = { apikey: process.env.VOCA_PUBLISHABLE_KEY, Authorization: authorization };
- const response = await fetch(voca + "/auth/v1/user", { headers, cache: "no-store", signal: AbortSignal.timeout(10000) });
- if (!response.ok) throw new Error("학생 로그인을 확인해 주세요.");
- const user = await response.json(), meta = user.app_metadata;
- const boundTest=!!process.env.PORTAL_TEST_VOCA_SUBJECT && user.id===process.env.PORTAL_TEST_VOCA_SUBJECT && meta?.external_student_id==null;
- if (!user.id || !meta || (!boundTest && (meta?.source_system !== "student_card" || !/^\d+$/.test(String(meta.external_student_id)))) || meta.must_change_password || meta.password_recovery_id) throw new Error("학생카드 연결 계정이 아닙니다.");
- const profiles = await fetch(voca + "/rest/v1/profiles?id=eq." + encodeURIComponent(user.id) + "&select=role,is_active,external_student_id,student_card_status,password_auth_version,password_recovery_id", { headers, cache: "no-store", signal: AbortSignal.timeout(10000) });
- if (!profiles.ok) throw new Error("계정 상태 확인에 실패했습니다.");
- const [profile] = await profiles.json();
- if (!profile?.is_active || profile.role !== "student" || (boundTest ? profile.external_student_id!=null : profile.student_card_status !== "active" || profile.external_student_id !== String(meta.external_student_id)) || profile.password_recovery_id || (profile.password_auth_version && profile.password_auth_version !== meta.password_auth_version)) throw new Error("현재 사용 가능한 재원생 계정이 아닙니다.");
- return {userId:user.id,cardId:boundTest?null:String(meta.external_student_id),isTest:boundTest};
+export async function verifyPortalIdentity(authorization:string|null):Promise<{userId:string;cardId:string|null;isTest:boolean}>{
+ if(!authorization?.startsWith('Bearer ')||authorization.length>8192)throw Error('학생 로그인이 필요합니다.');
+ const response=await fetch('https://voca.yussam.com/api/learning-portal/student-account?status=1',{headers:{authorization},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
+ if(!response.ok)throw Error('현재 사용 가능한 학생 계정이 아닙니다.');
+ const identity=await response.json();if(identity.active!==true||!identity.userId)throw Error('학생 계정을 확인해 주세요.');
+ return {userId:identity.userId,cardId:identity.cardId,isTest:identity.isTest};
 }
 export async function verifyPortalStudent(authorization:string|null):Promise<string>{const identity=await verifyPortalIdentity(authorization);if(!identity.cardId)throw new Error("학생카드 연결 계정이 아닙니다.");return identity.cardId;}
 export function portalWeek(value: string | null) {

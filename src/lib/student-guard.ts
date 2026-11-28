@@ -15,11 +15,23 @@ export async function getActiveStudent(): Promise<StudentSession | null> {
   // students → classes 는 class_id 하나뿐이라 조인 경로가 모호하지 않다
   const { data } = await admin
     .from("students")
-    .select("id, name, number, class_id, status, classes(archived_at)")
+    .select("id, name, number, class_id, status, hr_student_id, classes(archived_at)")
     .eq("id", session.studentId)
     .maybeSingle();
 
   if (!data || data.status !== "approved") return null;
+  try {
+    if(session.programSession){
+      const response=await fetch('https://learning.yussam.com/oauth/student-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:session.programSession}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(25000)});
+      if(!response.ok)return null;
+      const current=await response.json();
+      if(current.active!==true||(data.hr_student_id?current.cardId!==String(data.hr_student_id):!current.isTest||data.id!==process.env.PORTAL_TEST_SPEAKING_STUDENT))return null;
+    }else if(data.hr_student_id){
+      const key=process.env.STUDENT_CARD_ROSTER_KEY;if(!key)return null;
+      const response=await fetch('https://card.yussam.com/api/integrations/yuspeaking/students/'+encodeURIComponent(data.hr_student_id)+'/status',{headers:{'x-yuspeaking-roster-key':key},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
+      if(!response.ok||(await response.json()).active!==true)return null;
+    }
+  }catch{return null;}
 
   // 보관된 반의 학생은 접근 차단 (반을 복원하거나 다른 반으로 옮기면 바로 풀린다)
   // PostgREST 가 관계를 객체로 줄 때와 배열로 줄 때가 모두 있어 양쪽을 받는다

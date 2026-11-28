@@ -1,3 +1,4 @@
+import {getAiModel} from '@/lib/settings';
 import {todayKST} from '@/lib/date';
 import {fetchScoreRows,dailyAverage,visibleClasses,trendFrom} from '@/lib/trend';
 import {generateClassCode} from '@/lib/class-code';
@@ -22,10 +23,24 @@ export async function POST(request:Request){try{
   if(input.intent==='trendExport'){const cell=(value:unknown)=>{const raw=value==null?'':String(value),safe=typeof value==='string'&&/^[=+@-]/.test(raw)?"'"+raw:raw;return '"'+safe.replace(/"/g,'""')+'"';};const csv='\uFEFF'+[['반','번호','이름','과제','제출일','종합','정확도','유창성','완성도','억양'],...scores.map(r=>[r.className,r.studentNumber,r.studentName,r.assignmentTitle,r.date,r.overall,r.accuracy,r.fluency,r.completeness,r.prosody])].map(row=>row.map(cell).join(',')).join('\r\n');return NextResponse.json({csv,filename:'유스피킹_성적_'+from+'_'+todayKST()+'.csv'},{headers});}
   return NextResponse.json({from,until:todayKST(),series:classes.map(c=>{const rows=scores.filter(r=>r.classId===c.id);return {id:c.id,name:c.name,count:rows.length,points:dailyAverage(rows),average:rows.length?rows.reduce((n,r)=>n+r.overall,0)/rows.length:null};})},{headers});
  }
+ if(input.intent==='aiInventory'){
+  if(!admin||identity.viewOnly)throw Error('SCOPE');
+  return NextResponse.json({models:[
+   {service:'유스피킹',purpose:'읽기 피드백·월간 분석·문장 선택·이미지 지문 추출',provider:'Anthropic',model:await getAiModel(),version:'요청 모델 ID · 별도 스냅샷 미지정'},
+   {service:'유스피킹',purpose:'발음·정확도·유창성·완성도·억양 평가',provider:'Microsoft Azure Speech',model:'Pronunciation Assessment',version:'서비스 관리 버전 · 모델 버전 비공개'},
+   {service:'유스피킹',purpose:'샘플 음성 생성',provider:'Google Cloud TTS',model:'WaveNet',version:'v1 API · 선택한 en-US-Wavenet 음성'},
+   {service:'하루리뷰',purpose:'과제 문장·해석 생성',provider:'OpenAI',model:'gpt-4.1-mini',version:'요청 모델 ID · 별도 스냅샷 미지정'}
+  ]},{headers});
+ }
  if(['rewardSettings','saveRewardSettings'].includes(input.intent)){
   if(!admin||identity.viewOnly)throw Error('SCOPE');
-  if(input.intent==='saveRewardSettings'){if(!uuid(input.teacherId)||!Number.isInteger(input.goal)||input.goal<1||input.goal>100||typeof input.reward!=='string'||input.reward.length>500||!rows.data.some(t=>t.id===input.teacherId))throw Error('INVALID');const r=await db.from('teachers').update({coupon_goal:input.goal,coupon_reward_text:input.reward.trim()}).eq('id',input.teacherId);if(r.error)throw Error('READ');return NextResponse.json({ok:true,message:'쿠폰·보상 설정을 저장했습니다.'},{headers});}
-  return NextResponse.json({teachers:rows.data.map(t=>({id:t.id,name:t.name||t.email,goal:t.coupon_goal??25,reward:t.coupon_reward_text||''}))},{headers});
+  if(input.intent==='saveRewardSettings'){
+   if(!Number.isInteger(input.goal)||input.goal<1||input.goal>100||typeof input.reward!=='string'||input.reward.length>500)throw Error('INVALID');
+   const result=await db.rpc('save_global_coupon_settings',{p_goal:input.goal,p_reward:input.reward.trim()});if(result.error||result.data!==true)throw Error('READ');
+   return NextResponse.json({ok:true,message:'전체 선생님과 신규 계정에 적용할 쿠폰·보상 설정을 저장했습니다.'},{headers});
+  }
+  const setting=await db.from('app_settings').select('coupon_goal,coupon_reward_text').eq('id',1).single();if(setting.error)throw Error('READ');
+  return NextResponse.json({goal:setting.data.coupon_goal??teacher.coupon_goal??25,reward:setting.data.coupon_reward_text??teacher.coupon_reward_text??'',global:setting.data.coupon_goal!==null,defaultReward:'데스크 선생님께 보여주고 상품을 받아 가세요!'},{headers});
  }
  if(input.intent==='createClass'){
   if(identity.viewOnly||teacher.role!=='admin'&&await getSyncMode()==='oneway')throw Error('SCOPE');if(typeof input.name!=='string'||input.name.trim().length<2||input.name.length>60)throw Error('INVALID');

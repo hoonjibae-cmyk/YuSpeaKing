@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudentSession } from "@/lib/student-session";
+import { getActiveStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkCanSubmit, SUBMISSIONS_BUCKET } from "@/lib/student-submit";
 
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 // 여기서는 그 파일이 실제로 있는지 확인하고 레코드만 만든다(가볍고 빠르다).
 // 채점(AI 평가)은 별도 /api/student/evaluate 에서 이어서 실행한다.
 export async function POST(req: Request) {
-  const session = await getStudentSession();
+  const session = await getActiveStudent();
   if (!session) {
     return NextResponse.json({ error: "로그인이 필요해요" }, { status: 401 });
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudentSession } from "@/lib/student-session";
+import { getActiveStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { evaluateSubmission } from "@/lib/ai/evaluate";
 
@@ -10,7 +10,7 @@ export const maxDuration = 300;
 // 제출된 녹음 채점: 학생이 제출 직후 이 라우트를 호출한다.
 // 제출 저장과 분리되어 있어, 채점이 오래 걸리거나 실패해도 제출 자체는 유효하다.
 export async function POST(req: Request) {
-  const session = await getStudentSession();
+  const session = await getActiveStudent();
   if (!session) {
     return NextResponse.json({ error: "로그인이 필요해요" }, { status: 401 });
   }

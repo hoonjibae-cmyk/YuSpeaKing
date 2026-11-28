@@ -66,6 +66,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
       classId: String(payload.classId),
       name: String(payload.name),
       number: payload.number == null ? null : Number(payload.number),
+      programSession: typeof payload.programSession==='string'?payload.programSession:undefined,
     };
   } catch {
     return null;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStudentSession } from "@/lib/student-session";
+import { getActiveStudent } from "@/lib/student-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   checkCanSubmit,
@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 // 2분 20초가 넘는 녹음은 아예 올라가지 못하고 'Failed to fetch' 로 끊겼다.
 // 이제는 브라우저가 Supabase 로 직접 올리므로 그 한도를 받지 않는다.
 export async function POST(req: Request) {
-  const session = await getStudentSession();
+  const session = await getActiveStudent();
   if (!session) {
     return NextResponse.json({ error: "로그인이 필요해요" }, { status: 401 });
   }

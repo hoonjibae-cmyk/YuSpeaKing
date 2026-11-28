@@ -54,7 +54,10 @@ export function prepareSelection(source: unknown, mode: unknown, limit: unknown)
   }
   const sentences = Array.from(new Set(sourceSentences(source)));
   if (options.mode === "extract" && sentences.length < options.limit) {
-    throw new SelectionInputError(`원문에서 확인된 문장은 ${sentences.length}개입니다. 문장 수를 줄이거나 지문을 추가해 주세요.`);
+    const guidance = sentences.length < MIN_SENTENCES
+      ? `원문 그대로 추출하려면 최소 ${MIN_SENTENCES}문장이 필요하니 지문을 추가해 주세요.`
+      : `요청 문장 수를 ${sentences.length}개 이하로 줄이거나 지문을 추가해 주세요.`;
+    throw new SelectionInputError(`원문에서 확인된 문장은 ${sentences.length}개입니다. ${guidance}`);
   }
   return { ...options, sentences };
 }

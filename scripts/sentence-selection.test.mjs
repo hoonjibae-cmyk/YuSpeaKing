@@ -33,6 +33,8 @@ test('request limits, invalid mode, short source, OCR gaps and insufficient sent
  assert.throws(()=>prepareSelection(source+' [?]','extract',1),helpers.SelectionInputError);
  assert.throws(()=>prepareSelection('a'.repeat(30001),'summarize',1),helpers.SelectionInputError);
  assert.throws(()=>prepareSelection(source,'extract',10),/확인된 문장은 5개/);
+ assert.throws(()=>prepareSelection(source,'extract',10),/최소 10문장/);
+ for (const limit of [10,11,12,13,14,15]) assert.equal(prepareSelection(longSource,'extract',limit).limit,limit);
  assert.equal(prepareSelection(source,'summarize',10).limit,10);
  assert.throws(()=>prepareSelection('The bird sang. The bird sang.','extract',10),/확인된 문장은 1개/);
 });
